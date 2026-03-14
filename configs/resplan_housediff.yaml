@@ -1,0 +1,28 @@
+# Default config for HouseDiffusion with ResPlan data
+
+model:
+  num_channels: 512
+  num_heads: 4
+  num_res_blocks: 3
+  dropout: 0.1
+
+diffusion:
+  steps: 1000
+  noise_schedule: cosine
+
+training:
+  batch_size: 32
+  lr: 1.0e-4
+  ema_rate: 0.9999
+  max_steps: 500000
+  save_interval: 10000
+  log_interval: 100
+
+data:
+  data_dir: data/processed
+  analog_bit: false
+  target_set: 8  # max rooms per sample
+
+wandb:
+  project: floorplan-diffusion
+  entity: null  # set per user

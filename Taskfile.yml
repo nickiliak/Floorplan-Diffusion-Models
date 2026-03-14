@@ -1,0 +1,46 @@
+version: '3'
+
+tasks:
+  setup:
+    desc: Install dependencies, init submodules, install pre-commit hooks
+    cmds:
+      - uv sync --all-extras
+      - git submodule update --init --recursive
+      - uv run pre-commit install
+
+  data:download:
+    desc: Extract ResPlan data into data/raw/
+    cmds:
+      - cd external/ResPlan && unzip -o ResPlan.zip -d ../../data/raw/
+
+  data:convert:
+    desc: Convert ResPlan data to HouseDiffusion format
+    cmds:
+      - uv run python scripts/convert_resplan.py --input data/raw/ --output data/processed/
+
+  train:
+    desc: Train model with default config
+    cmds:
+      - uv run python scripts/train.py --config configs/resplan_housediff.yaml
+
+  sample:
+    desc: Generate samples from trained model
+    cmds:
+      - uv run python scripts/sample.py --config configs/resplan_housediff.yaml --checkpoint models/latest.pt
+
+  test:
+    desc: Run tests
+    cmds:
+      - uv run pytest tests/ -v
+
+  lint:
+    desc: Run linting and format checks
+    cmds:
+      - uv run ruff check src/ scripts/ tests/
+      - uv run ruff format --check src/ scripts/ tests/
+
+  format:
+    desc: Auto-format code
+    cmds:
+      - uv run ruff check --fix src/ scripts/ tests/
+      - uv run ruff format src/ scripts/ tests/

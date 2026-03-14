@@ -1,0 +1,36 @@
+# Data
+data/raw/*.pkl
+data/raw/*.zip
+data/interim/
+data/processed/
+
+# Model checkpoints
+models/*.pt
+models/*.pth
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Wandb
+wandb/
+
+# UV
+.uv/
+
+# Pytest
+.pytest_cache/

@@ -1,0 +1,55 @@
+[project]
+name = "floorplan-diffusion"
+version = "0.1.0"
+description = "Diffusion models for floorplan data generation — DTU Special Course"
+readme = "README.md"
+authors = [
+    { name = "Nikos Iliakis", email = "nickiliak847@gmail.com" },
+]
+requires-python = ">=3.11"
+dependencies = [
+    # Core ML
+    "torch>=2.1.0",
+    "numpy>=1.24",
+    "tqdm",
+    "blobfile>=1.0.5",
+    # Data processing
+    "shapely>=2.0",
+    "networkx>=3.0",
+    "geopandas",
+    # Visualization
+    "matplotlib",
+    "opencv-python",
+    "Pillow",
+    # Config & logging
+    "pyyaml",
+    "wandb",
+    # Utilities
+    "webcolors",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff",
+    "pre-commit",
+    "ipykernel",
+    "jupyter",
+]
+eval = [
+    "pytorch-fid",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.13,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,6 @@
+[submodule "external/house_diffusion"]
+	path = external/house_diffusion
+	url = https://github.com/aminshabani/house_diffusion.git
+[submodule "external/ResPlan"]
+	path = external/ResPlan
+	url = https://github.com/m-agour/ResPlan.git
