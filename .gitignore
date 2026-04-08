@@ -34,3 +34,4 @@ wandb/
 
 # Pytest
 .pytest_cache/
+.codex
