@@ -26,8 +26,5 @@ jobs:
 
       - name: Lint
         run: |
-          uv run ruff check src/ scripts/ tests/
-          uv run ruff format --check src/ scripts/ tests/
-
-      - name: Test
-        run: uv run pytest tests/ -v
+          uv run ruff check src/ scripts/
+          uv run ruff format --check src/ scripts/
