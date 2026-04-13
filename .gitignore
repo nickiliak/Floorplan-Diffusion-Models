@@ -35,3 +35,5 @@ wandb/
 # Pytest
 .pytest_cache/
 .codex
+#Npz files
+*.npz

@@ -44,6 +44,10 @@ from src.helpers.resplandataset import (
     extract_rooms_from_plan,
     extract_vertices_from_polygon,
     DEFAULT_MAX_NUM_POINTS,
+    NUM_ROOM_TYPE_CLASSES,
+    MAX_CORNER_INDEX,
+    MAX_ROOM_INDEX,
+    ROW_WIDTH,
 )
 
 
@@ -71,7 +75,7 @@ def create_model(
     """Create a TransformerModel configured for ResPlan/rplan-style data."""
     num_coords = 16 if analog_bit else 2
     input_channels = num_coords + (2 * 8 if not analog_bit else 0)
-    condition_channels = 89  # room_types(25) + corner_indices(32) + room_indices(32)
+    condition_channels = 121 # room_types(25) + corner_indices(32) + room_indices(32) + src_key_padding_mask(1) + connections(2) + door_mask(1) + self_mask(1) + gen_mask(1)
     out_channels = num_coords
 
     model = TransformerModel(
@@ -156,15 +160,20 @@ def make_synthetic_batch(
         else:
             graph = graph_triples[:200]
 
+        _ci = 2 + NUM_ROOM_TYPE_CLASSES
+        _ri = _ci + MAX_CORNER_INDEX
+        _pm = _ri + MAX_ROOM_INDEX
+        _cn = _pm + 1
+
         cond = {
             "door_mask": door_mask,
             "self_mask": self_mask,
             "gen_mask": gen_mask,
-            "room_types": house_tensor[:, 2:27],
-            "corner_indices": house_tensor[:, 27:59],
-            "room_indices": house_tensor[:, 59:91],
-            "src_key_padding_mask": 1 - house_tensor[:, 91],
-            "connections": house_tensor[:, 92:94],
+            "room_types": house_tensor[:, 2 : _ci],
+            "corner_indices": house_tensor[:, _ci : _ri],
+            "room_indices": house_tensor[:, _ri : _pm],
+            "src_key_padding_mask": 1 - house_tensor[:, _pm],
+            "connections": house_tensor[:, _cn : _cn + 2],
             "graph": graph,
         }
 
@@ -385,6 +394,21 @@ def main():
         analog_bit=args.analog_bit,
         device=device,
     )
+
+    # --- Save model checkpoint ---
+    models_dir = os.path.join(PROJECT_ROOT, "models")
+    os.makedirs(models_dir, exist_ok=True)
+    checkpoint_path = os.path.join(models_dir, "resplan_housediff.pt")
+    th.save({
+        "model_state_dict": model.state_dict(),
+        "num_channels": args.num_channels,
+        "max_num_points": args.max_num_points,
+        "analog_bit": args.analog_bit,
+        "diffusion_steps": args.diffusion_steps,
+        "condition_channels": 121,
+        "losses": losses,
+    }, checkpoint_path)
+    print(f"\nModel saved to {checkpoint_path}")
 
     print("\n" + "=" * 60)
     print("SMOKE TEST PASSED — data loads and trains successfully")
