@@ -10,7 +10,9 @@
       "Bash(done)",
       "Bash(uv sync:*)",
       "Bash(uv run:*)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(git commit:*)",
+      "Bash(git add:*)"
     ]
   }
 }
