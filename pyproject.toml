@@ -6,10 +6,8 @@ readme = "README.md"
 authors = [
     { name = "Nikos Iliakis", email = "nickiliak847@gmail.com" },
 ]
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
-    # Core ML
-    "torch>=2.1.0",
     "numpy>=1.24",
     "tqdm",
     "blobfile>=1.0.5",
@@ -27,6 +25,9 @@ dependencies = [
     # Utilities
     "webcolors",
     "pytorch-lightning>=2.6.1",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
+    "torchaudio>=2.11.0",
 ]
 
 [project.optional-dependencies]
@@ -44,6 +45,16 @@ eval = [
 [build-system]
 requires = ["uv_build>=0.9.13,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+torchaudio = { index = "pytorch-cu128" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [tool.ruff]
 line-length = 100

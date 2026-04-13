@@ -49,7 +49,7 @@ DEFAULT_MAX_NUM_POINTS = 175
 
 # One-hot dimensions (must match HouseDiffusion model expectations)
 NUM_ROOM_TYPE_CLASSES = 25   # columns 2–26 in the [N, 94] tensor
-MAX_CORNER_INDEX = 32        # columns 27–58
+MAX_CORNER_INDEX = 64        # columns 27–58
 MAX_ROOM_INDEX = 32          # columns 59–90
 
 # Room types present in ResPlan and their mapping to integer IDs.
@@ -319,8 +319,11 @@ def simplify_plan_if_needed(plan: Dict[str, Any], max_points: int = DEFAULT_MAX_
 
     # Start with a small tolerance and increase until we meet the corner limit.
     tolerance = 0.5
-    while total_corners > max_points:
-        simplified_plan = plan.copy()
+    max_iterations = 50
+    iteration = 0
+    simplified_plan = plan.copy()
+    while total_corners > max_points and iteration < max_iterations:
+        #simplified_plan = plan.copy()
         for key in ROOM_KEYS:
             geom = simplified_plan.get(key)
             if geom is not None:
@@ -329,6 +332,7 @@ def simplify_plan_if_needed(plan: Dict[str, Any], max_points: int = DEFAULT_MAX_
         rooms = extract_rooms_from_plan(simplified_plan)
         total_corners = sum(len(extract_vertices_from_polygon(room[0])) for room in rooms)
         tolerance *= 2  # Exponentially increase tolerance to speed up
+        iteration += 1
 
     logger.info(
         "Simplified plan %s to %d corners with tolerance=%.2f.",
@@ -398,7 +402,7 @@ def build_house_tensor(
             logger.warning(
                 "Room %s has %d corners > %d; truncating.", type_name, n_corners, MAX_CORNER_INDEX
             )
-            verts = verts[:MAX_CORNER_INDEX]
+            verts = verts[:MAX_CORNER_INDEX] #use boundary resampling instead
             n_corners = MAX_CORNER_INDEX
 
         if room_count + 1 >= MAX_ROOM_INDEX:
