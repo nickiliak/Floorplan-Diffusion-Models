@@ -1,11 +1,11 @@
 #!/bin/sh
-### LSF Queue Options
+### LSF Queue Options — TEST (low resources, fast turnaround)
 #BSUB -q gpuv100
-#BSUB -J train_house_diffusion_res
+#BSUB -J train_test
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=8GB]"
-#BSUB -M 9GB
+#BSUB -R "rusage[mem=4GB]"
+#BSUB -M 5GB
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -W 0:20
 #BSUB -B
@@ -37,6 +37,6 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
     exit 1
 }
 
-## --- Execution: Part A ---
-echo ">>> Initiate training of ddpm"
-uv run --no-sync python -m scripts.train
+## --- Execution ---
+echo ">>> Initiate TEST training (500 steps, batch_size=16)"
+uv run --no-sync python -m scripts.train --config configs/resplan_housediff_test.yaml

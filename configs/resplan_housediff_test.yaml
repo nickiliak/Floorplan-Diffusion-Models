@@ -1,0 +1,33 @@
+# Test config — minimal resources for quick smoke tests
+# Produces a checkpoint fast to verify the pipeline works end-to-end.
+# Output quality will be poor. Use resplan_housediff_def.yaml for real training.
+
+model:
+  num_channels: 512
+  num_heads: 4
+  num_res_blocks: 3
+  dropout: 0.1
+
+diffusion:
+  steps: 1000
+  noise_schedule: cosine
+
+training:
+  batch_size: 16
+  lr: 1.0e-3
+  weight_decay: 0.05
+  warmup_steps: 50
+  ema_rate: 0.9999
+  max_steps: 500
+  save_interval: 250
+  log_interval: 10
+  lr_decay_steps: 100000
+  check_val_every_n_epoch: 5
+
+data:
+  pickle_path: data/raw/ResPlan.pkl
+  cache_dir: data/processed
+  analog_bit: false
+  fp16: false
+  num_workers: 1
+  val_fraction: 0.1

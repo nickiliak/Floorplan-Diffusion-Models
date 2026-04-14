@@ -1,13 +1,13 @@
 #!/bin/sh
 ### LSF Queue Options
 #BSUB -q gpuv100
-#BSUB -J sample_house_diffusion_res
+#BSUB -J train_house_diffusion_res
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=8GB]"
-#BSUB -M 9GB
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 18GB
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -W 00:30
+#BSUB -W 24:00
 #BSUB -B
 #BSUB -N
 #BSUB -o Output_%J.out
@@ -37,6 +37,6 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
     exit 1
 }
 
-## --- Execution ---
-echo ">>> Generating samples"
-uv run python -m scripts.sample --checkpoint models/checkpoints/last.ckpt
+## --- Execution: Part A ---
+echo ">>> Initiate training of ddpm"
+uv run --no-sync python -m scripts.train --config configs/resplan_housediff_def.yaml
