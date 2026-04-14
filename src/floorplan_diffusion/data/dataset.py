@@ -23,7 +23,7 @@ from typing import Any
 import networkx as nx
 import numpy as np
 from numpy.typing import NDArray
-from shapely.geometry import MultiPolygon, Polygon
+from shapely.geometry import LineString, MultiPolygon, Polygon
 from torch.utils.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -35,12 +35,20 @@ logger = logging.getLogger(__name__)
 ROOM_TYPES: list[str] = ["living", "bedroom", "kitchen", "bathroom", "balcony"]
 """Canonical ordering of room types when iterating a plan."""
 
+DOOR_TYPES: dict[str, int] = {
+    "door": 11,        # interior door opening  (matches RPLAN type 11)
+    "front_door": 13,  # building entry door    (matches RPLAN type 13)
+}
+"""Mapping from ResPlan door-geometry keys to RPLAN integer encoding."""
+
 ROOM_TYPE_TO_INT: dict[str, int] = {
     "living": 1,
     "bedroom": 2,
     "kitchen": 3,
     "bathroom": 4,
     "balcony": 10,
+    "door": 11,
+    "front_door": 13,
 }
 """Mapping from ResPlan room-type strings to the RPLAN integer encoding."""
 
@@ -75,6 +83,20 @@ def _get_polygons(geom_data: Any) -> list[Polygon]:
     # GeometryCollection or other — try iterating
     if hasattr(geom_data, "geoms"):
         return [g for g in geom_data.geoms if isinstance(g, Polygon) and not g.is_empty]
+    return []
+
+
+def _get_any_geoms(geom_data: Any) -> list[Any]:
+    """Extract individual ``Polygon`` or ``LineString`` geometries from any Shapely object.
+
+    Used for door/front_door fields which may be LineStrings instead of Polygons.
+    """
+    if geom_data is None:
+        return []
+    if isinstance(geom_data, (Polygon, LineString)):
+        return [] if geom_data.is_empty else [geom_data]
+    if hasattr(geom_data, "geoms"):
+        return [g for g in geom_data.geoms if isinstance(g, (Polygon, LineString)) and not g.is_empty]
     return []
 
 
@@ -227,7 +249,21 @@ class ResPlanDataset(Dataset):
         """
         plan = _normalize_keys(plan)
 
-        # -- 1. Collect rooms: (corners, room_type_int, graph_node_id) ----------
+        # -- 1. Resolve normalization bounds early (needed for door buffer scale) --
+        inner = plan.get("inner")
+        if inner is None or inner.is_empty:
+            return None
+        minx, miny, maxx, maxy = inner.bounds
+        cx = (minx + maxx) / 2.0
+        cy = (miny + maxy) / 2.0
+        half_extent = max(maxx - minx, maxy - miny) / 2.0
+        if half_extent == 0:
+            return None
+        # Buffer for converting door LineStrings to thin polygons:
+        # ~4% of plan scale gives a visually reasonable door width after normalization.
+        door_buffer = half_extent * 0.04
+
+        # -- 2. Collect rooms: (corners, room_type_int, graph_node_id) ----------
         rooms: list[tuple[NDArray[np.float64], int, str]] = []
         for room_type in ROOM_TYPES:
             geom_data = plan.get(room_type)
@@ -239,22 +275,28 @@ class ResPlanDataset(Dataset):
                 corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
                 rooms.append((corners, ROOM_TYPE_TO_INT[room_type], f"{room_type}_{i}"))
 
+        # -- 2b. Collect door polygons (LineStrings buffered to thin rectangles) --
+        for door_key, door_type_int in DOOR_TYPES.items():
+            geom_data = plan.get(door_key)
+            if geom_data is None:
+                continue
+            for i, geom in enumerate(_get_any_geoms(geom_data)):
+                if isinstance(geom, LineString):
+                    poly = geom.buffer(door_buffer, cap_style=2)  # flat-cap rectangle
+                elif isinstance(geom, Polygon):
+                    poly = geom
+                else:
+                    continue
+                if poly.is_empty:
+                    continue
+                corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
+                rooms.append((corners, door_type_int, f"{door_key}_{i}"))
+
         total_vertices = sum(len(c) for c, _, _ in rooms)
         if total_vertices > MAX_NUM_POINTS or total_vertices == 0:
             return None
 
-        # -- 2. Normalize coordinates to [-1, 1] via inner polygon bounds ------
-        inner = plan.get("inner")
-        if inner is None or inner.is_empty:
-            return None
-        minx, miny, maxx, maxy = inner.bounds
-        cx = (minx + maxx) / 2.0
-        cy = (miny + maxy) / 2.0
-        half_extent = max(maxx - minx, maxy - miny) / 2.0
-        if half_extent == 0:
-            return None
-
-        # -- 3. Build the 94-column feature array row by row -------------------
+        # -- 4. Build the 94-column feature array row by row -------------------
         house_parts: list[NDArray[np.float64]] = []
         corner_bounds: list[tuple[int, int]] = []
         node_id_to_room_idx: dict[str, int] = {}

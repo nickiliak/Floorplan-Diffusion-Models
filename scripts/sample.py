@@ -32,11 +32,13 @@ logger = logging.getLogger(__name__)
 
 # Room-type int → colour for rendering.
 ROOM_COLORS: dict[int, str] = {
-    1: "#EE4D4D",   # living
-    2: "#C67C7B",   # bedroom
-    3: "#FFD274",   # kitchen
-    4: "#BEBEBE",   # bathroom
-    10: "#1F849B",  # balcony
+    1:  "#EE4D4D",   # living
+    2:  "#C67C7B",   # bedroom
+    3:  "#FFD274",   # kitchen
+    4:  "#BEBEBE",   # bathroom
+    10: "#1F849B",   # balcony
+    11: "#E78AC3",   # door (interior)
+    13: "#A63603",   # front_door
 }
 
 INT_TO_ROOM_NAME: dict[int, str] = {v: k for k, v in ROOM_TYPE_TO_INT.items()}
@@ -254,7 +256,7 @@ def generate_samples(
     shape = (batch_size, 2, 100)
 
     # Move conditioning to device.
-    model_kwargs = {k: v.float().to(device) for k, v in cond_batch.items()}
+    model_kwargs = {f"syn_{k}": v.float().to(device) for k, v in cond_batch.items()}
 
     sample_stack = diffusion.p_sample_loop(
         model,

@@ -309,6 +309,43 @@ each other (except FID which builds on the sampling script).
 
 ---
 
+## Known Issues & Fixes
+
+### Door Polygons Missing from Pipeline (discovered 2026-04-14)
+
+**Symptom:** Sample outputs contain no door openings. Ground-truth panels also lack
+doors, so the issue is in data ingestion, not generation quality.
+
+**Root cause — representation mismatch:**
+
+| | RPLAN (HouseDiffusion original) | ResPlan (ours) |
+|---|---|---|
+| Interior doors | **Polygon rooms**, type 15→11, 17→12 | `LineString` geometry in `plan["door"]` |
+| Front door | **Polygon room**, type 16→13 | `LineString`/`Polygon` in `plan["front_door"]`; also a **graph node** |
+| Role in model | Predicted as polygon corner sequences | Completely ignored by our pipeline |
+
+In RPLAN every door is a pixel-mask region that becomes a contoured polygon with a room
+type ID. HouseDiffusion then generates door polygons just like any other room. Our
+`dataset.py` only iterates over `ROOM_TYPES = ["living", "bedroom", "kitchen",
+"bathroom", "balcony"]` and never reads door geometries — so the model has never seen a
+door in training and cannot generate one.
+
+The model architecture is unaffected: the room-type one-hot has 25 slots and indices 11
+and 13 are already reserved for door types. No model changes are needed.
+
+**Fix (to be implemented):**
+
+1. `dataset.py`: Add `DOOR_TYPES = {"door": 11, "front_door": 13}` and extend
+   `ROOM_TYPE_TO_INT`. In `_process_plan`, buffer interior door `LineString`s into thin
+   rectangular `Polygon`s and add them as room entries alongside regular rooms. Register
+   `front_door_{i}` nodes in `node_id_to_room_idx` so the existing graph-based
+   `door_mask` construction correctly links front-door ↔ living-room attention.
+2. `sample.py`: Add `11: "#E78AC3"` (interior door) and `13: "#A63603"` (front door) to
+   `ROOM_COLORS`.
+3. Delete `.npz` cache files in `data/processed/` to force re-processing.
+
+---
+
 ## Future: Plan B (Stretch Goal)
 
 If Plan C is working and time allows, these are potential Plan B improvements:

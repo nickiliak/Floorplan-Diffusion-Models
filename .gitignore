@@ -34,3 +34,10 @@ wandb/
 
 # Pytest
 .pytest_cache/
+
+# Extra
+*.err
+*.out
+*logs
+*models
+*outputs

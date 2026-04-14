@@ -1,7 +1,7 @@
 #!/bin/sh
 ### LSF Queue Options
 #BSUB -q gpuv100
-#BSUB -J train_house_diffusion_res
+#BSUB -J sample_house_diffusion_res
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
 #BSUB -R "rusage[mem=8GB]"
@@ -37,6 +37,6 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
     exit 1
 }
 
-## --- Execution: Part A ---
-echo ">>> Initiate training of ddpm"
-uv run --no-sync python -m scripts.train
+## --- Execution ---
+echo ">>> Generating samples"
+uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=10000-val/loss=0.0024.ckpt
