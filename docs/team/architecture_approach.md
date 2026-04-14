@@ -94,8 +94,9 @@ from raw data, and how we *orchestrate* training.
 | SpacedDiffusion | `respace.py` | 128 | Accelerated inference with fewer timesteps |
 | nn utilities | `nn.py` | 172 | timestep_embedding, mean_flat, update_ema |
 
-These are ported into `src/floorplan_diffusion/models/` with cleanup (type hints, docstrings)
-but **no architectural changes**. The model produces identical outputs given identical inputs.
+These are ported into `src/floorplan_diffusion/models/` with **no architectural changes**.
+The model produces identical outputs given identical inputs. Code polish (type hints,
+docstrings) is deferred to v2 — the v1 ports are direct working copies.
 
 ### What we rewrite
 
@@ -137,7 +138,14 @@ Plan C toward Plan B.
 
 ## Execution Plan for Plan C
 
-### Step 1: ResPlan Dataset Class
+The plan is split into **v1** (core pipeline — train, sample, evaluate) and **v2**
+(refinements). v1 skips plans with >100 total vertices instead of simplifying polygons,
+keeping ~87.8% of the dataset. This is an acceptable tradeoff to reduce complexity and
+get a working pipeline faster.
+
+### v1 — Core Pipeline
+
+#### Step 1: ResPlan Dataset Class
 
 **File:** `src/floorplan_diffusion/data/dataset.py`
 
@@ -162,7 +170,7 @@ format. This is the critical bridge between ResPlan data and the existing model.
 1. Load pickle, call `normalize_keys()` on each plan
 2. For each plan, extract room polygons via `get_geometries()` for all 6 room types
 3. Extract corner coordinates from `polygon.exterior.coords[:-1]`
-4. Optionally simplify polygons with `polygon.simplify()` if total vertices > 100
+4. Filter out plans where total vertices > 100 (simplification deferred to v2)
 5. Normalize coordinates to `[-1, 1]` using `plan["inner"].bounds`
 6. Build the 94-channel per-point encoding (2 coords + 25 room type + 32 corner idx + 32 room idx + 1 padding + 2 connections)
 7. Build attention masks from `plan["graph"]` edges
@@ -171,24 +179,22 @@ format. This is the critical bridge between ResPlan data and the existing model.
 
 **Depends on:** Nothing (can start immediately).
 
-### Step 2: Port Transformer Architecture
+#### Step 2: Port Transformer Architecture
 
 **File:** `src/floorplan_diffusion/models/transformer.py`
 
-Copy `external/house_diffusion/house_diffusion/transformer.py` (275 lines) into our package.
-Clean up:
-- Add type hints to all function signatures
-- Add docstrings to public classes/methods
-- Replace hardcoded constants with constructor parameters
-- Keep architecture **identical** — same layer count, same hidden dim, same attention pattern
+Copy `external/house_diffusion/house_diffusion/transformer.py` (275 lines) and `nn.py`
+(172 lines) into our package. Fix import paths so internal references resolve. Keep
+architecture **identical** — same layer count, same hidden dim, same attention pattern.
+Code polish (type hints, docstrings, parameterizing constants) is deferred to v2.
 
 **Depends on:** Nothing (can start in parallel with Step 1).
 
-### Step 3: Port Diffusion Math
+#### Step 3: Port Diffusion Math
 
 **File:** `src/floorplan_diffusion/models/diffusion.py`
 
-Port from `external/house_diffusion/house_diffusion/gaussian_diffusion.py` (979 lines):
+Port the full `gaussian_diffusion.py` (979 lines) as-is:
 - `GaussianDiffusion` class with all schedule precomputation
 - `q_sample()` — forward noising
 - `p_mean_variance()` — reverse step mean/variance
@@ -196,56 +202,59 @@ Port from `external/house_diffusion/house_diffusion/gaussian_diffusion.py` (979 
 - `training_losses()` — loss computation
 - Beta schedule functions (`get_named_beta_schedule`, `betas_for_alpha_bar`)
 
-Also port `SpacedDiffusion` from `respace.py` and timestep samplers from `resample.py`.
+Also port `SpacedDiffusion` from `respace.py` and `UniformSampler` from `resample.py`.
+Skip `LossSecondMomentResampler` (depends on MPI `all_gather`).
 
 **Depends on:** Nothing (can start in parallel with Steps 1–2).
 
-### Step 4: PyTorch Lightning Training Module
+#### Step 4: PyTorch Lightning Training Module
 
 **File:** `src/floorplan_diffusion/training/lightning_module.py`
 
 A `LightningModule` that wraps the Transformer + GaussianDiffusion:
-- `training_step()`: sample timestep, call `q_sample`, forward pass, compute loss
-- `configure_optimizers()`: AdamW with optional LR scheduling
+- `training_step()`: sample timestep via `UniformSampler`, call `training_losses()`,
+  return loss
+- `validation_step()`: same as training_step on val split, log val loss
+- `configure_optimizers()`: AdamW with step-decay LR scheduling (10× decay every 100k
+  steps, matching the original HouseDiffusion schedule)
 - EMA weight maintenance (via callback or manual update in `on_train_batch_end`)
-- Logging: loss, learning rate, EMA decay, sample images at intervals
+- Logging: loss, learning rate, EMA decay
 
 **File:** `src/floorplan_diffusion/training/data_module.py`
 
-A `LightningDataModule` wrapping the ResPlan dataset with train/val/test splits.
+A `LightningDataModule` wrapping the ResPlan dataset with a 90/10 train/val split.
 
 **Depends on:** Steps 1, 2, 3 (needs dataset, model, and diffusion).
 
-### Step 5: Training Script
+#### Step 5: Training Script
 
 **File:** `scripts/train.py`
 
 CLI entry point using PyTorch Lightning `Trainer`:
 - Load YAML config from `configs/`
 - Instantiate data module, model, diffusion, Lightning module
-- Configure callbacks (checkpointing, EMA, logging)
+- Configure callbacks: `ModelCheckpoint`, EMA, `EarlyStopping` (monitor val loss)
+- TensorBoard or CSV logger
 - `trainer.fit()`
-
-**File:** `configs/default.yaml` — default hyperparameters matching HouseDiffusion
 
 **Depends on:** Step 4.
 
-### Step 6: Sampling Script
+#### Step 6: Sampling Script
 
 **File:** `scripts/sample.py`
 
 Inference script:
 - Load trained checkpoint (EMA weights)
-- Create eval dataset (synthetic conditions, zero-initialized corners)
+- Create eval dataset (conditions from val set, zero-initialized corners)
 - Run `p_sample_loop()` to generate floorplans
-- Render output as PNG/SVG using Shapely + matplotlib
-- Compute evaluation metrics (FID, graph accuracy)
+- Render output as PNG using matplotlib
+- Compute graph accuracy metric (requires adding `graph` tensor back to dataset output)
 
 **Depends on:** Steps 2, 3, 5 (needs model, diffusion, and a trained checkpoint).
 
-### Step 7: Validation
+#### Step 7: Validation
 
-Verify the hybrid approach produces correct results:
+Verify the v1 pipeline produces correct results:
 - [ ] Tensor shapes from ResPlan dataset match HouseDiffusion's shapes exactly
 - [ ] Ported Transformer produces identical output given identical input tensors
 - [ ] Ported diffusion produces identical noise schedules and loss values
@@ -257,20 +266,46 @@ Verify the hybrid approach produces correct results:
 
 ---
 
-## Dependency Graph
+### v2 — Refinements
+
+After v1 is validated, these improvements can be tackled independently (unless noted):
+
+1. **Polygon simplification** — Apply `polygon.simplify(tolerance)` to recover the ~12.2%
+   of plans filtered out in v1. Requires tolerance tuning and visual validation that
+   simplified polygons still represent the original room shapes faithfully.
+2. **WandB logging** — Replace TensorBoard with WandB for richer experiment tracking,
+   hyperparameter sweeps, and team-shared dashboards.
+3. **FID metric** — Compute Fréchet Inception Distance between generated and real
+   floorplans. Requires generating a large sample set and building a reference distribution.
+   *Depends on v1 Step 6.*
+4. **Config flexibility** — Config validation, config inheritance for experiments, CLI
+   overrides for hyperparameters.
+5. **Code polish** — Type hints and docstrings on ported model code. Parameterize remaining
+   hardcoded constants (e.g., `num_layers = 4` in Transformer).
+
+---
+
+### Dependency Graph
 
 ```
-Step 1 (Dataset) ──────────┐
-                            │
-Step 2 (Transformer) ──────┤
-                            ├──→ Step 4 (Lightning) ──→ Step 5 (Train) ──→ Step 7 (Validate)
-Step 3 (Diffusion) ────────┤                                   │
-                            │                                   │
-                            └──────────────────→ Step 6 (Sample) ┘
+v1:
+  Step 1 (Dataset+Cache) ──────────┐
+                                    │
+  Step 2 (Transformer) ────────────┤
+                                    ├─→ Step 4 (Lightning+EMA+Val+LR) ─→ Step 5 (Train) ─→ Step 6 (Sample) ─→ Step 7 (Validate)
+  Step 3 (Diffusion) ──────────────┘
+
+v2 (after v1 validated):
+  v2.1 Simplification ─── independent
+  v2.2 WandB ──────────── independent
+  v2.3 FID metric ─────── depends on v1 Step 6
+  v2.4 Config flex ────── independent
+  v2.5 Code polish ────── independent
 ```
 
 Steps 1, 2, and 3 can be developed **in parallel** by different team members.
-Step 4 integrates them. Steps 5–7 are sequential.
+Step 4 integrates them. Steps 5–7 are sequential. All v2 items are independent of
+each other (except FID which builds on the sampling script).
 
 ---
 
