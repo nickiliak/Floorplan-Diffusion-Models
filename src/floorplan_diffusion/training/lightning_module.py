@@ -49,7 +49,7 @@ class FloorplanDiffusionModule(pl.LightningModule):
         self.analog_bit = analog_bit
 
         self.sampler = UniformSampler(diffusion)
-
+        
         # EMA parameters — a deep copy of model params stored as buffers.
         self._ema_params: list[torch.Tensor] = [
             p.clone().detach() for p in self.model.parameters()
@@ -57,6 +57,11 @@ class FloorplanDiffusionModule(pl.LightningModule):
 
         self.save_hyperparameters(ignore=["model", "diffusion"])
 
+    # Move params to gpu NEEDFIX
+    def on_train_start(self) -> None:
+        """Called by Lightning when training begins (after moving to GPU)."""
+        self._ema_params = [p.to(self.device) for p in self._ema_params]
+        
     # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------

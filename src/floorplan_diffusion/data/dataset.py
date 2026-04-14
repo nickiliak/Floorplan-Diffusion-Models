@@ -263,6 +263,9 @@ class ResPlanDataset(Dataset):
         for room_idx, (corners, rtype_int, node_id) in enumerate(rooms):
             num_room_corners = len(corners)
 
+            if num_room_corners > 32:
+                continue # FIXNEED
+            
             # Normalize coordinates.
             coords = corners.copy()
             coords[:, 0] = (coords[:, 0] - cx) / half_extent
@@ -273,8 +276,7 @@ class ResPlanDataset(Dataset):
 
             # Room index is 1-indexed (first room -> index 1).
             room_idx_oh = np.tile(_get_one_hot(len(house_parts) + 1, 32), (num_room_corners, 1))
-
-            # Corner index within this room.
+                
             corner_idx_oh = np.array([_get_one_hot(c, 32) for c in range(num_room_corners)])
 
             # Padding mask: 1 for real points.

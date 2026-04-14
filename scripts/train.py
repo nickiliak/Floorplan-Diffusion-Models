@@ -50,11 +50,11 @@ DEFAULT_CONFIG: dict = {
         "batch_size": 32,
         "lr": 1e-4,
         "ema_rate": 0.9999,
-        "max_steps": 500, #500_000
+        "max_steps": 20_000, #FIXNEED 500_000
         "save_interval": 10_000,
         "log_interval": 100,
         "lr_decay_steps": 100_000,
-        "val_check_interval": 1000,
+        "val_check_interval": 200, #FIXNEED 1000
         "patience": 50,
     },
     "data": {

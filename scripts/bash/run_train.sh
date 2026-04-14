@@ -39,4 +39,4 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
 
 ## --- Execution: Part A ---
 echo ">>> Initiate training of ddpm"
-uv run python scripts/train.py
+uv run python -m scripts.train
