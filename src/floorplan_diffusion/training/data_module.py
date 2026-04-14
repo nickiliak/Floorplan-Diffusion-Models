@@ -82,6 +82,7 @@ class ResPlanDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             drop_last=False,
             pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )
 
     def val_dataloader(self) -> DataLoader[Any]:
@@ -93,4 +94,5 @@ class ResPlanDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             drop_last=False,
             pin_memory=True,
+            persistent_workers=self.num_workers > 0,
         )

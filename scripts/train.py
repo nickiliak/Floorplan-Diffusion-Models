@@ -3,20 +3,20 @@
 
 Usage::
 
-    uv run python scripts/train.py                            # defaults
-    uv run python scripts/train.py --config configs/my.yaml   # custom config
-    uv run python scripts/train.py --data.batch_size 16       # CLI override
+    uv run python scripts/train.py --config configs/resplan_housediff.yaml
+    uv run python scripts/train.py --config configs/my.yaml --training.lr 0.0005
 """
 
 from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 import pytorch_lightning as pl
 import yaml
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
 
 from src.floorplan_diffusion.models.gaussian_diffusion import (
@@ -32,63 +32,22 @@ from src.floorplan_diffusion.training.lightning_module import FloorplanDiffusion
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Defaults (matches configs/resplan_housediff.yaml)
-# ---------------------------------------------------------------------------
 
-DEFAULT_CONFIG: dict = {
-    "model": {
-        "num_channels": 512,
-        "num_heads": 4,
-        "dropout": 0.1,
-    },
-    "diffusion": {
-        "steps": 1000,
-        "noise_schedule": "cosine",
-    },
-    "training": {
-        "batch_size": 32,
-        "lr": 1e-4,
-        "ema_rate": 0.9999,
-        "max_steps": 20_000, #FIXNEED 500_000
-        "save_interval": 10_000,
-        "log_interval": 100,
-        "lr_decay_steps": 100_000,
-        "val_check_interval": 200, #FIXNEED 1000
-        "patience": 50,
-    },
-    "data": {
-        "pickle_path": "data/raw/ResPlan.pkl",
-        "cache_dir": "data/processed",
-        "analog_bit": False,
-        "num_workers": 2,
-        "val_fraction": 0.1,
-    },
-}
-
-
-def deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge *override* into *base*, returning a new dict."""
-    result = base.copy()
-    for k, v in override.items():
-        if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-            result[k] = deep_merge(result[k], v)
-        else:
-            result[k] = v
-    return result
-
-
-def load_config(config_path: str | None) -> dict:
-    """Load YAML config and merge with defaults."""
-    cfg = DEFAULT_CONFIG.copy()
-    if config_path is not None:
-        path = Path(config_path)
-        if path.exists():
-            with open(path) as f:
-                file_cfg = yaml.safe_load(f) or {}
-            cfg = deep_merge(cfg, file_cfg)
-        else:
-            logger.warning("Config file %s not found, using defaults.", path)
+def load_config(config_path: str) -> dict:
+    """Load YAML config file. Exits if the file is missing or empty."""
+    path = Path(config_path)
+    if not path.exists():
+        logger.error("Config file not found: %s", path)
+        sys.exit(1)
+    with open(path) as f:
+        cfg = yaml.safe_load(f)
+    if not cfg:
+        logger.error("Config file is empty: %s", path)
+        sys.exit(1)
+    for section in ("model", "diffusion", "training", "data"):
+        if section not in cfg:
+            logger.error("Config missing required section '%s'", section)
+            sys.exit(1)
     return cfg
 
 
@@ -169,8 +128,12 @@ def main() -> None:
     """Entry point for training."""
     parser = argparse.ArgumentParser(description="Train floorplan diffusion model")
     parser.add_argument(
-        "--config", type=str, default="configs/resplan_housediff.yaml",
-        help="Path to YAML config file",
+        "--config", type=str, required=True,
+        help="Path to YAML config file (e.g. configs/resplan_housediff.yaml)",
+    )
+    parser.add_argument(
+        "--resume", type=str, default=None,
+        help="Path to checkpoint to resume training from",
     )
     args, remaining = parser.parse_known_args()
 
@@ -192,10 +155,10 @@ def main() -> None:
     # --- Data ---
     data_module = ResPlanDataModule(
         pickle_path=data_cfg["pickle_path"],
-        cache_dir=data_cfg.get("cache_dir"),
+        cache_dir=data_cfg["cache_dir"],
         batch_size=train_cfg["batch_size"],
-        num_workers=data_cfg.get("num_workers", 2),
-        val_fraction=data_cfg.get("val_fraction", 0.1),
+        num_workers=data_cfg["num_workers"],
+        val_fraction=data_cfg["val_fraction"],
     )
 
     # --- Model + Diffusion ---
@@ -206,8 +169,10 @@ def main() -> None:
         model=model,
         diffusion=diffusion,
         lr=train_cfg["lr"],
+        weight_decay=train_cfg["weight_decay"],
+        warmup_steps=train_cfg["warmup_steps"],
         ema_rate=train_cfg["ema_rate"],
-        lr_decay_steps=train_cfg.get("lr_decay_steps", 100_000),
+        lr_decay_steps=train_cfg["lr_decay_steps"],
         analog_bit=data_cfg["analog_bit"],
     )
 
@@ -219,14 +184,8 @@ def main() -> None:
             monitor="val/loss",
             mode="min",
             save_top_k=3,
-            every_n_train_steps=train_cfg.get("save_interval", 10_000),
+            every_n_train_steps=train_cfg["save_interval"],
             save_last=True,
-        ),
-        EarlyStopping(
-            monitor="val/loss",
-            patience=train_cfg.get("patience", 50),
-            mode="min",
-            verbose=True,
         ),
     ]
 
@@ -236,18 +195,18 @@ def main() -> None:
     # --- Trainer ---
     trainer = pl.Trainer(
         max_steps=train_cfg["max_steps"],
-        val_check_interval=train_cfg.get("val_check_interval", 1000),
+        check_val_every_n_epoch=train_cfg["check_val_every_n_epoch"],
         callbacks=callbacks,
         logger=csv_logger,
-        log_every_n_steps=train_cfg.get("log_interval", 100),
+        log_every_n_steps=train_cfg["log_interval"],
         gradient_clip_val=1.0,
-        precision="16-mixed" if data_cfg.get("fp16", False) else "32-true",
+        precision="16-mixed" if data_cfg["fp16"] else "32-true",
         accelerator="auto",
         devices="auto",
     )
 
     # --- Train ---
-    trainer.fit(lit_module, datamodule=data_module)
+    trainer.fit(lit_module, datamodule=data_module, ckpt_path=args.resume)
     logger.info("Training complete.")
 
 

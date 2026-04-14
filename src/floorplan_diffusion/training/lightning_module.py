@@ -25,6 +25,8 @@ class FloorplanDiffusionModule(pl.LightningModule):
         model: The ``TransformerModel`` instance.
         diffusion: A ``SpacedDiffusion`` (or ``GaussianDiffusion``) instance.
         lr: Learning rate for AdamW.
+        weight_decay: AdamW weight decay coefficient.
+        warmup_steps: Number of linear warmup steps before applying the decay schedule.
         ema_rate: Exponential moving average decay rate for model parameters.
         lr_decay_steps: Apply a 10x LR decay every this many global steps.
             Set to 0 to disable step-decay scheduling.
@@ -35,7 +37,9 @@ class FloorplanDiffusionModule(pl.LightningModule):
         self,
         model: torch.nn.Module,
         diffusion: Any,
-        lr: float = 1e-4,
+        lr: float = 1e-3,
+        weight_decay: float = 0.05,
+        warmup_steps: int = 2000,
         ema_rate: float = 0.9999,
         lr_decay_steps: int = 100_000,
         analog_bit: bool = False,
@@ -44,6 +48,8 @@ class FloorplanDiffusionModule(pl.LightningModule):
         self.model = model
         self.diffusion = diffusion
         self.lr = lr
+        self.weight_decay = weight_decay
+        self.warmup_steps = warmup_steps
         self.ema_rate = ema_rate
         self.lr_decay_steps = lr_decay_steps
         self.analog_bit = analog_bit
@@ -120,18 +126,27 @@ class FloorplanDiffusionModule(pl.LightningModule):
     # ------------------------------------------------------------------
 
     def configure_optimizers(self) -> dict[str, Any]:
-        """AdamW optimizer with optional step-decay LR scheduling."""
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.lr)
+        """AdamW optimizer with linear warmup and step-decay LR scheduling."""
+        optimizer = torch.optim.AdamW(
+            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay,
+        )
 
-        if self.lr_decay_steps <= 0:
+        if self.lr_decay_steps <= 0 and self.warmup_steps <= 0:
             return {"optimizer": optimizer}
 
-        # 10x decay every lr_decay_steps.
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=self.lr_decay_steps,
-            gamma=0.1,
-        )
+        warmup = max(1, self.warmup_steps)
+        decay_steps = self.lr_decay_steps
+
+        def lr_lambda(step: int) -> float:
+            # Linear warmup from 0 to 1 over warmup steps.
+            if step < warmup:
+                return step / warmup
+            # 10x decay every lr_decay_steps (if enabled).
+            if decay_steps > 0:
+                return 0.1 ** (step // decay_steps)
+            return 1.0
+
+        scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
         return {
             "optimizer": optimizer,
             "lr_scheduler": {

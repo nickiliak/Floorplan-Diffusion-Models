@@ -166,7 +166,7 @@ class ResPlanDataset(Dataset):
         """
         arr = self.houses[idx][:, : self.num_coords].copy()  # [100, 2]
 
-        # Random 90-degree rotation augmentation during training.
+        # Random 90-degree rotation + flip augmentation during training.
         if self.set_name == "train":
             rotation = random.randint(0, 3)
             if rotation == 1:
@@ -176,6 +176,12 @@ class ResPlanDataset(Dataset):
                 arr[:, [0, 1]] = -arr[:, [1, 0]]
             elif rotation == 3:
                 arr[:, [0, 1]] = arr[:, [1, 0]]
+                arr[:, 1] = -arr[:, 1]
+
+            # Random flips (combined with rotations → 16x augmentation).
+            if random.random() < 0.5:
+                arr[:, 0] = -arr[:, 0]
+            if random.random() < 0.5:
                 arr[:, 1] = -arr[:, 1]
 
         arr = np.transpose(arr, [1, 0])  # [2, 100]
@@ -292,6 +298,21 @@ class ResPlanDataset(Dataset):
                 corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
                 rooms.append((corners, door_type_int, f"{door_key}_{i}"))
 
+        # -- 3. Reject plans containing rooms with >32 corners --
+        # Previously these rooms were silently skipped (`continue`), which
+        # corrupted graph connectivity — other rooms lost their adjacency
+        # edges to the dropped room.  Rejecting the entire plan avoids
+        # corrupted training signal.  Only ~268 plans (~1.78%) are affected.
+        # A future improvement (v2) could use polygon.simplify() to recover
+        # these plans after validating that simplified geometry is faithful.
+        for corners, _rtype_int, node_id in rooms:
+            if len(corners) > 32:
+                logger.debug(
+                    "Room %s has %d corners (>32); rejecting plan.",
+                    node_id, len(corners),
+                )
+                return None
+
         total_vertices = sum(len(c) for c, _, _ in rooms)
         if total_vertices > MAX_NUM_POINTS or total_vertices == 0:
             return None
@@ -305,9 +326,6 @@ class ResPlanDataset(Dataset):
         for room_idx, (corners, rtype_int, node_id) in enumerate(rooms):
             num_room_corners = len(corners)
 
-            if num_room_corners > 32:
-                continue # FIXNEED
-            
             # Normalize coordinates.
             coords = corners.copy()
             coords[:, 0] = (coords[:, 0] - cx) / half_extent
