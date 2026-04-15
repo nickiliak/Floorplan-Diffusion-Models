@@ -4,10 +4,10 @@
 #BSUB -J train_house_diffusion_res
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=16GB]"
-#BSUB -M 18GB
+#BSUB -R "rusage[mem=4GB]"
+#BSUB -M 4GB
 #BSUB -gpu "num=1:mode=exclusive_process"
-#BSUB -W 24:00
+#BSUB -W 16:00
 #BSUB -B
 #BSUB -N
 #BSUB -o Output_%J.out
@@ -21,7 +21,7 @@ echo "--------------------------------------------------"
 
 # Environment Setup
 export PATH="$HOME/.local/bin:$PATH"
-cd ~/Floorplan-Diffusion-Models || { echo "Project directory not found"; exit 1; }
+cd ~/Floorplan-Diffusion-Models-BH || { echo "Project directory not found"; exit 1; }
 
 # Module Loading & Verification
 module load cuda/12.1
@@ -39,4 +39,4 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
 
 ## --- Execution: Part A ---
 echo ">>> Initiate training of ddpm"
-uv run --no-sync python -m scripts.train --config configs/resplan_housediff_def.yaml
+uv run --no-sync python -m scripts.train --config configs/resplan_housediff_stable_fp32.yaml

@@ -175,6 +175,27 @@ class GaussianDiffusion:
         self.posterior_mean_coef2 = (
             (1.0 - self.alphas_cumprod_prev) * np.sqrt(alphas) / (1.0 - self.alphas_cumprod)
         )
+        self._nonfinite_logged: set[str] = set()
+
+    def _log_nonfinite_once(self, name: str, tensor: th.Tensor, t: th.Tensor) -> None:
+        """Log first non-finite detection for a named tensor."""
+        if name in self._nonfinite_logged:
+            return
+        if th.isfinite(tensor).all():
+            return
+        self._nonfinite_logged.add(name)
+        num_nonfinite = int((~th.isfinite(tensor)).sum().item())
+        total = int(tensor.numel())
+        t_min = int(t.min().item())
+        t_max = int(t.max().item())
+        logger.warning(
+            "Detected non-finite %s: %d/%d elements (timestep range: [%d, %d]).",
+            name,
+            num_nonfinite,
+            total,
+            t_min,
+            t_max,
+        )
 
     def q_mean_variance(self, x_start: th.Tensor, t: th.Tensor) -> tuple:
         """Get the distribution q(x_t | x_0).
@@ -861,6 +882,8 @@ class GaussianDiffusion:
             model_output_dec, model_output_bin = model(
                 x_t, self._scale_timesteps(t), xtalpha=xtalpha, epsalpha=epsalpha, **model_kwargs
             )
+            if model_output_bin is not None:
+                self._log_nonfinite_once("model_output_bin", model_output_bin, t)
 
             if self.model_var_type in [
                 ModelVarType.LEARNED,
@@ -914,9 +937,14 @@ class GaussianDiffusion:
             assert model_output_dec.shape == target.shape == x_start.shape
 
             if not analog_bit:
-                terms["mse_bin"] = mean_flat(
-                    ((bin_target - model_output_bin) ** 2) * t_weights, tmp_mask
-                )
+                # Mask low-t binary loss before reduction and sanitize non-finite values.
+                # This prevents NaN propagation from ignored timesteps (0 * NaN is NaN).
+                t_mask = (t < 10).to(x_start.device).view(-1, 1, 1)
+                bin_err_sq = (bin_target - model_output_bin) ** 2
+                bin_err_sq = th.where(t_mask, bin_err_sq, th.zeros_like(bin_err_sq))
+                bin_err_sq = th.nan_to_num(bin_err_sq, nan=0.0, posinf=0.0, neginf=0.0)
+                terms["mse_bin"] = mean_flat(bin_err_sq * t_weights, tmp_mask)
+                self._log_nonfinite_once("mse_bin", terms["mse_bin"], t)
             terms["mse_dec"] = mean_flat(((target - model_output_dec) ** 2), tmp_mask)
 
             if "vb" in terms:
@@ -926,6 +954,7 @@ class GaussianDiffusion:
                     terms["loss"] = terms["mse_dec"] + terms["mse_bin"]
                 else:
                     terms["loss"] = terms["mse_dec"]
+            self._log_nonfinite_once("loss", terms["loss"], t)
         else:
             raise NotImplementedError(self.loss_type)
 

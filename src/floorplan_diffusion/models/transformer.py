@@ -104,7 +104,7 @@ def attention(
     scores = th.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
     if mask is not None:
         mask = mask.unsqueeze(1)
-        scores = scores.masked_fill(mask == 1, -1e9)
+        scores = scores.masked_fill(mask == 1, th.finfo(scores.dtype).min)  #changedog fp16 safe
     scores = F.softmax(scores, dim=-1)
     if dropout is not None:
         scores = dropout(scores)

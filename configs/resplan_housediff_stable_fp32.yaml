@@ -1,0 +1,33 @@
+model:
+  num_channels: 512
+  num_heads: 4
+  num_res_blocks: 3
+  dropout: 0.1
+
+diffusion:
+  steps: 1000
+  noise_schedule: cosine
+
+training:
+  batch_size: 128
+  lr: 3.0e-4
+  weight_decay: 0.05
+  warmup_steps: 2000
+  ema_rate: 0.9999
+  max_steps: 250000
+  save_interval: 25000
+  log_interval: 10
+  lr_decay_steps: 100000
+  check_val_every_n_epoch: 40
+
+data:
+  pickle_path: data/raw/ResPlan.pkl
+  cache_dir: data/processed
+  analog_bit: false
+  fp16: false
+  num_workers: 3
+  val_fraction: 0.1
+
+wandb:
+  project: floorplan-diffusion
+  entity: null
