@@ -12,7 +12,8 @@
       "Bash(uv run:*)",
       "Bash(python -c \":*)",
       "Bash(git commit:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(python -c \"import json; nb=json.load\\(open\\('notebooks/01_resplan_exploration.ipynb'\\)\\); print\\(len\\(nb['cells']\\)\\); print\\([\\(i, c['cell_type'], c['source'][0][:60] if c['source'] else ''\\) for i, c in enumerate\\(nb['cells']\\)]\\)\")"
     ]
   }
 }
