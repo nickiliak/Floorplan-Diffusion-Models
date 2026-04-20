@@ -205,8 +205,8 @@ def run_training_test(
     model: TransformerModel,
     diffusion: SpacedDiffusion,
     num_steps: int = 5,
-    lr: float = 1e-4,
-    analog_bit: bool = False,
+    lr: float = 1e-3,
+    analog_bit: bool = True,
     device: str = "cpu",
 ):
     """Run a few training steps and verify the loss is finite."""
@@ -296,7 +296,7 @@ def main():
     parser = argparse.ArgumentParser(description="Smoke test: ResPlan → HouseDiffusion training")
     parser.add_argument("--pkl", type=str, default=None,
                         help="Path to ResPlan.pkl. If omitted, uses synthetic data.")
-    parser.add_argument("--batch_size", type=int, default=2)
+    parser.add_argument("--batch_size", type=int, default=512)
     parser.add_argument("--num_steps", type=int, default=5,
                         help="Number of training steps to run")
     parser.add_argument("--target_set", type=int, default=8)
@@ -305,7 +305,7 @@ def main():
                         help="Fewer steps for faster testing (production uses 1000)")
     parser.add_argument("--num_channels", type=int, default=128,
                         help="Model hidden dim. 128 for fast testing, 512 for production")
-    parser.add_argument("--analog_bit", action="store_true", default=False)
+    parser.add_argument("--analog_bit", action="store_true", default=True)
     parser.add_argument("--device", type=str, default=None,
                         help="'cpu' or 'cuda'. Auto-detects if omitted.")
     args = parser.parse_args()

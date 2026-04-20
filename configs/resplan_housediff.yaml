@@ -7,7 +7,7 @@ model:
   dropout: 0.1
 
 diffusion:
-  steps: 1000
+  steps: 250000
   noise_schedule: cosine
 
 training:

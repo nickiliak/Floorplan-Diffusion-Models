@@ -37,3 +37,5 @@ wandb/
 .codex
 #Npz files
 *.npz
+*.out
+*.err
