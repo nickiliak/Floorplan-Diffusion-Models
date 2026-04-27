@@ -20,9 +20,6 @@ def main() -> None:
     """Entry point for running HouseDiffusion benchmarks."""
     parser = argparse.ArgumentParser(description="Run HouseDiffusion benchmarks")
     parser.add_argument("--checkpoint", type=Path, required=True)
-    parser.add_argument(
-        "--config", type=Path, default=Path("configs/resplan_housediff_def.yaml"),
-    )
     parser.add_argument("--num_runs", type=int, default=5)
     parser.add_argument("--num_samples", type=int, default=1000)
     parser.add_argument("--batch_size", type=int, default=16)
@@ -37,7 +34,6 @@ def main() -> None:
 
     results = run_benchmark(
         checkpoint_path=args.checkpoint,
-        config_path=args.config,
         num_runs=args.num_runs,
         num_samples=args.num_samples,
         batch_size=args.batch_size,

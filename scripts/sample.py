@@ -17,17 +17,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.floorplan_diffusion.data.dataset import ROOM_TYPE_TO_INT, ResPlanDataset
-from src.floorplan_diffusion.evaluation.render import ROOM_COLORS, points_to_room_polygons
-from src.floorplan_diffusion.models.gaussian_diffusion import (
-    LossType,
-    ModelMeanType,
-    ModelVarType,
-    get_named_beta_schedule,
-)
-from src.floorplan_diffusion.models.respace import SpacedDiffusion, space_timesteps
-from src.floorplan_diffusion.models.transformer import TransformerModel
-from src.floorplan_diffusion.training.lightning_module import FloorplanDiffusionModule
+from floorplan_diffusion.data.dataset import ROOM_TYPE_TO_INT, ResPlanDataset
+from floorplan_diffusion.evaluation.render import ROOM_COLORS, points_to_room_polygons
+from floorplan_diffusion.models.sampling import create_model_and_diffusion, generate_samples
+from floorplan_diffusion.training.lightning_module import FloorplanDiffusionModule
 
 logger = logging.getLogger(__name__)
 
@@ -61,9 +54,15 @@ def render_floorplan(
         color = ROOM_COLORS.get(rtype, "#888888")
         label = INT_TO_ROOM_NAME.get(rtype, f"type_{rtype}")
         if len(coords) >= 3:
-            poly = plt.Polygon(coords, closed=True, facecolor=color,
-                               edgecolor="black", linewidth=1.0, alpha=0.7,
-                               label=label)
+            poly = plt.Polygon(
+                coords,
+                closed=True,
+                facecolor=color,
+                edgecolor="black",
+                linewidth=1.0,
+                alpha=0.7,
+                label=label,
+            )
             ax.add_patch(poly)
         # Draw corner markers.
         ax.scatter(coords[:, 0], coords[:, 1], s=10, c="black", zorder=5)
@@ -122,11 +121,13 @@ def compute_graph_accuracy_from_points(
                 continue
             # Pick a representative point from each room.
             pa = next(
-                i for i in range(100)
+                i
+                for i in range(100)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == ra
             )
             pb = next(
-                i for i in range(100)
+                i
+                for i in range(100)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == rb
             )
             if door_mask[pa, pb] < 0.5:
@@ -141,89 +142,11 @@ def compute_graph_accuracy_from_points(
         pts_b = ridx_to_pts[rb]
         # Minimum pairwise distance.
         diffs = pts_a[:, None, :] - pts_b[None, :, :]
-        dists = np.sqrt((diffs ** 2).sum(axis=-1))
+        dists = np.sqrt((diffs**2).sum(axis=-1))
         if dists.min() < adjacency_threshold:
             satisfied += 1
 
     return satisfied / len(expected_edges)
-
-
-# ---------------------------------------------------------------------------
-# Sampling
-# ---------------------------------------------------------------------------
-
-
-def create_model_and_diffusion(
-    analog_bit: bool = False,
-    num_channels: int = 512,
-    diffusion_steps: int = 1000,
-    noise_schedule: str = "cosine",
-) -> tuple[TransformerModel, SpacedDiffusion]:
-    """Instantiate model and diffusion matching the training config."""
-    num_coords = 16 if analog_bit else 2
-    in_channels = num_coords + (2 * 8 if not analog_bit else 0)
-
-    model = TransformerModel(
-        in_channels=in_channels,
-        condition_channels=89,
-        model_channels=num_channels,
-        out_channels=num_coords,
-        dataset="rplan",
-        use_checkpoint=False,
-        use_unet=False,
-        analog_bit=analog_bit,
-    )
-
-    betas = get_named_beta_schedule(noise_schedule, diffusion_steps)
-    diffusion = SpacedDiffusion(
-        use_timesteps=space_timesteps(diffusion_steps, [diffusion_steps]),
-        betas=betas,
-        model_mean_type=ModelMeanType.EPSILON,
-        model_var_type=ModelVarType.FIXED_LARGE,
-        loss_type=LossType.MSE,
-    )
-
-    return model, diffusion
-
-
-@torch.no_grad()
-def generate_samples(
-    model: TransformerModel,
-    diffusion: SpacedDiffusion,
-    cond_batch: dict[str, torch.Tensor],
-    analog_bit: bool = False,
-    device: torch.device | str = "cpu",
-) -> torch.Tensor:
-    """Run the reverse diffusion process to generate floorplan samples.
-
-    Args:
-        model: Trained Transformer model (in eval mode).
-        diffusion: The diffusion process.
-        cond_batch: Dict of conditioning tensors (batched).
-        analog_bit: Analog vs binary mode.
-        device: Torch device.
-
-    Returns:
-        Generated samples, shape ``[batch, 2, 100]``.
-    """
-    model.eval()
-    batch_size = cond_batch["room_types"].shape[0]
-    shape = (batch_size, 2, 100)
-
-    # Move conditioning to device.
-    model_kwargs = {f"syn_{k}": v.float().to(device) for k, v in cond_batch.items()}
-
-    sample_stack = diffusion.p_sample_loop(
-        model,
-        shape,
-        clip_denoised=True,
-        model_kwargs=model_kwargs,
-        analog_bit=analog_bit,
-        device=device,
-    )
-    # p_sample_loop returns [num_final_steps, batch, 2, 100].
-    # Take the last timestep as the final sample.
-    return sample_stack[-1]
 
 
 # ---------------------------------------------------------------------------
@@ -235,15 +158,21 @@ def main() -> None:
     """Entry point for sampling."""
     parser = argparse.ArgumentParser(description="Sample floorplans from a trained model")
     parser.add_argument(
-        "--checkpoint", type=str, required=True,
+        "--checkpoint",
+        type=str,
+        required=True,
         help="Path to a Lightning checkpoint (.ckpt)",
     )
     parser.add_argument(
-        "--pickle_path", type=str, default="data/raw/ResPlan.pkl",
+        "--pickle_path",
+        type=str,
+        default="data/raw/ResPlan.pkl",
         help="Path to ResPlan pickle (for conditioning data)",
     )
     parser.add_argument(
-        "--cache_dir", type=str, default="data/processed",
+        "--cache_dir",
+        type=str,
+        default="data/processed",
         help="Cache directory for processed tensors",
     )
     parser.add_argument("--num_samples", type=int, default=8, help="How many to generate")
@@ -251,7 +180,9 @@ def main() -> None:
     parser.add_argument("--output_dir", type=str, default="outputs", help="Output directory")
     parser.add_argument("--device", type=str, default="auto", help="Device (cpu/cuda/auto)")
     parser.add_argument(
-        "--analog_bit", action="store_true", default=False,
+        "--analog_bit",
+        action="store_true",
+        default=False,
         help="Use analog mode (default: binary)",
     )
     args = parser.parse_args()
@@ -316,8 +247,11 @@ def main() -> None:
         # Generate.
         logger.info("Generating batch %d–%d ...", sample_idx, batch_end - 1)
         generated = generate_samples(
-            model, diffusion, cond_batch,
-            analog_bit=args.analog_bit, device=device,
+            model,
+            diffusion,
+            cond_batch,
+            analog_bit=args.analog_bit,
+            device=device,
         )
         generated_np = generated.cpu().numpy()  # [batch, 2, 100]
 
@@ -335,15 +269,24 @@ def main() -> None:
 
             # Build polygons.
             gen_polys = points_to_room_polygons(
-                gen_points, room_types, room_indices, padding_mask,
+                gen_points,
+                room_types,
+                room_indices,
+                padding_mask,
             )
             gt_polys = points_to_room_polygons(
-                gt_points, room_types, room_indices, padding_mask,
+                gt_points,
+                room_types,
+                room_indices,
+                padding_mask,
             )
 
             # Graph accuracy.
             accuracy = compute_graph_accuracy_from_points(
-                gen_points, door_mask, room_indices, padding_mask,
+                gen_points,
+                door_mask,
+                room_indices,
+                padding_mask,
             )
             all_accuracies.append(accuracy)
 
@@ -356,8 +299,7 @@ def main() -> None:
             handles, labels = axes[1].get_legend_handles_labels()
             seen = set()
             unique = [
-                (h, lab) for h, lab in zip(handles, labels)
-                if lab not in seen and not seen.add(lab)
+                (h, lab) for h, lab in zip(handles, labels) if lab not in seen and not seen.add(lab)
             ]
             if unique:
                 fig.legend(*zip(*unique), loc="lower center", ncol=len(unique), fontsize=9)
@@ -367,7 +309,9 @@ def main() -> None:
             plt.close(fig)
             logger.info(
                 "  [%d] graph_accuracy=%.2f  saved to %s",
-                idx, accuracy, output_dir / f"sample_{idx:04d}.png",
+                idx,
+                accuracy,
+                output_dir / f"sample_{idx:04d}.png",
             )
 
         sample_idx = batch_end
@@ -378,7 +322,9 @@ def main() -> None:
         std_acc = np.std(all_accuracies)
         logger.info(
             "Graph accuracy: %.4f ± %.4f  (n=%d)",
-            mean_acc, std_acc, len(all_accuracies),
+            mean_acc,
+            std_acc,
+            len(all_accuracies),
         )
     logger.info("Sampling complete. Outputs in %s", output_dir)
 

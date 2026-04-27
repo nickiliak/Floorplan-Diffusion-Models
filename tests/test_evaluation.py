@@ -43,10 +43,16 @@ class TestPointsToRoomPolygons:
         from floorplan_diffusion.evaluation.render import points_to_room_polygons
 
         n = 6
-        points = np.array([
-            [0.0, 0.0], [0.1, 0.0], [0.1, 0.1],  # room 0
-            [0.5, 0.5], [0.6, 0.5], [0.6, 0.6],  # room 1
-        ])
+        points = np.array(
+            [
+                [0.0, 0.0],
+                [0.1, 0.0],
+                [0.1, 0.1],  # room 0
+                [0.5, 0.5],
+                [0.6, 0.5],
+                [0.6, 0.6],  # room 1
+            ]
+        )
         room_types = np.zeros((n, 25))
         room_types[0, 1] = 1  # living
         room_types[1, 1] = 1
@@ -175,6 +181,201 @@ class TestCompatibility:
 
         graph = estimate_graph([room0, front])
         assert graph.has_edge(-1, 0)
+
+
+class TestBuildGtGraph:
+    """Tests for _build_gt_graph — ground-truth graph reconstruction."""
+
+    @staticmethod
+    def _make_inputs(
+        n_points: int,
+        room_assignments: list[tuple[int, int]],
+        door_connections: list[tuple[int, int]],
+        front_door_points: list[int] | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Build synthetic inputs for _build_gt_graph.
+
+        Args:
+            n_points: Total number of points.
+            room_assignments: ``(point_idx, room_idx)`` pairs for non-door rooms.
+                Room type defaults to 1 (living).
+            door_connections: ``(point_a, point_b)`` pairs that should be
+                connected (door_mask[a,b] = 0).
+            front_door_points: Indices of front-door typed points (type 13).
+
+        Returns:
+            ``(room_types, room_indices, padding_mask, door_mask)`` arrays.
+        """
+        room_types = np.zeros((n_points, 25))
+        room_indices = np.zeros((n_points, 32))
+        padding_mask = np.ones(n_points)  # default: padding
+        door_mask = np.ones((n_points, n_points))  # default: not connected
+
+        for pt_idx, room_idx in room_assignments:
+            room_types[pt_idx, 1] = 1  # living room type
+            room_indices[pt_idx, room_idx] = 1
+            padding_mask[pt_idx] = 0
+
+        if front_door_points:
+            for pt_idx in front_door_points:
+                room_types[pt_idx] = 0  # clear
+                room_types[pt_idx, 13] = 1  # front door type
+                padding_mask[pt_idx] = 0
+
+        for a, b in door_connections:
+            door_mask[a, b] = 0
+            door_mask[b, a] = 0
+
+        return room_types, room_indices, padding_mask, door_mask
+
+    def test_two_rooms_connected(self) -> None:
+        """Two rooms with door_mask connection produce an edge."""
+        from floorplan_diffusion.evaluation.compatibility import _build_gt_graph
+
+        # 4 points: 2 in room 0, 2 in room 1, connected via door_mask
+        rt, ri, pm, dm = self._make_inputs(
+            n_points=4,
+            room_assignments=[(0, 0), (1, 0), (2, 1), (3, 1)],
+            door_connections=[(0, 2)],  # room 0 point <-> room 1 point
+        )
+        graph = _build_gt_graph(rt, ri, pm, dm)
+        assert graph.has_edge(0, 1)
+
+    def test_disconnected_rooms(self) -> None:
+        """Rooms without door_mask connections have no edge."""
+        from floorplan_diffusion.evaluation.compatibility import _build_gt_graph
+
+        rt, ri, pm, dm = self._make_inputs(
+            n_points=4,
+            room_assignments=[(0, 0), (1, 0), (2, 1), (3, 1)],
+            door_connections=[],  # no connections
+        )
+        graph = _build_gt_graph(rt, ri, pm, dm)
+        assert not graph.has_edge(0, 1)
+        # Both rooms should still be nodes
+        assert 0 in graph.nodes
+        assert 1 in graph.nodes
+
+    def test_front_door_connects_outside(self) -> None:
+        """A front-door point connected to a room creates an outside edge."""
+        from floorplan_diffusion.evaluation.compatibility import _build_gt_graph
+
+        # Point 0,1 = room 0 (living), point 2 = front door
+        rt, ri, pm, dm = self._make_inputs(
+            n_points=3,
+            room_assignments=[(0, 0), (1, 0)],
+            door_connections=[(2, 0)],  # front door connected to room 0 point
+            front_door_points=[2],
+        )
+        # front door point needs a room index too
+        ri[2, 5] = 1  # assign to some door "room index"
+        graph = _build_gt_graph(rt, ri, pm, dm)
+        assert graph.has_edge(-1, 0)
+
+    def test_padding_points_ignored(self) -> None:
+        """Padded points should not create edges or nodes."""
+        from floorplan_diffusion.evaluation.compatibility import _build_gt_graph
+
+        rt, ri, pm, dm = self._make_inputs(
+            n_points=4,
+            room_assignments=[(0, 0), (1, 0)],
+            door_connections=[],
+        )
+        # Points 2 and 3 remain padding (default)
+        graph = _build_gt_graph(rt, ri, pm, dm)
+        assert len(graph.edges) == 0
+        assert 0 in graph.nodes  # room 0 exists
+
+
+class TestEstimateGraphErrors:
+    """Tests for estimate_graph_errors — the main compatibility entry point."""
+
+    def test_perfect_match_zero_errors(self) -> None:
+        """When estimated graph matches GT exactly, errors should be 0."""
+        from floorplan_diffusion.evaluation.compatibility import estimate_graph_errors
+
+        # Two rooms with an interior door between them — GT and polygons match.
+        n = 10
+        room_types = np.zeros((n, 25))
+        room_indices = np.zeros((n, 32))
+        padding_mask = np.ones(n)
+        door_mask = np.ones((n, n))
+
+        # Room 0: 3 points forming a big left square
+        for i in range(3):
+            room_types[i, 1] = 1  # living
+            room_indices[i, 0] = 1
+            padding_mask[i] = 0
+
+        # Room 1: 3 points forming a big right square
+        for i in range(3, 6):
+            room_types[i, 2] = 1  # bedroom
+            room_indices[i, 1] = 1
+            padding_mask[i] = 0
+
+        # Interior door: 3 points overlapping boundary
+        for i in range(6, 9):
+            room_types[i, 11] = 1  # interior door
+            room_indices[i, 2] = 1
+            padding_mask[i] = 0
+
+        # Connect rooms through door_mask (room 0 pt <-> room 1 pt)
+        door_mask[0, 3] = 0
+        door_mask[3, 0] = 0
+
+        # Build polygons that match the GT graph
+        room0_poly = (np.array([(0, 0), (5, 0), (5, 10), (0, 10)]), 1)
+        room1_poly = (np.array([(5, 0), (10, 0), (10, 10), (5, 10)]), 2)
+        door_poly = (np.array([(4.5, 4), (5.5, 4), (5.5, 6), (4.5, 6)]), 11)
+
+        errors = estimate_graph_errors(
+            [room0_poly, room1_poly, door_poly],
+            room_types,
+            room_indices,
+            padding_mask,
+            door_mask,
+        )
+        assert errors == 0
+
+    def test_known_mismatch_counts_errors(self) -> None:
+        """When estimated graph differs from GT, errors should be > 0."""
+        from floorplan_diffusion.evaluation.compatibility import estimate_graph_errors
+
+        n = 6
+        room_types = np.zeros((n, 25))
+        room_indices = np.zeros((n, 32))
+        padding_mask = np.ones(n)
+        door_mask = np.ones((n, n))
+
+        # Room 0: 3 points
+        for i in range(3):
+            room_types[i, 1] = 1
+            room_indices[i, 0] = 1
+            padding_mask[i] = 0
+
+        # Room 1: 3 points
+        for i in range(3, 6):
+            room_types[i, 2] = 1
+            room_indices[i, 1] = 1
+            padding_mask[i] = 0
+
+        # GT says rooms are connected
+        door_mask[0, 3] = 0
+        door_mask[3, 0] = 0
+
+        # But polygons have NO door, so estimated graph won't have the edge
+        room0_poly = (np.array([(0, 0), (5, 0), (5, 10), (0, 10)]), 1)
+        room1_poly = (np.array([(50, 50), (60, 50), (60, 60), (50, 60)]), 2)
+        # No door polygon at all
+
+        errors = estimate_graph_errors(
+            [room0_poly, room1_poly],
+            room_types,
+            room_indices,
+            padding_mask,
+            door_mask,
+        )
+        assert errors > 0
 
 
 class TestFID:

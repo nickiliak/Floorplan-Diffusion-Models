@@ -14,10 +14,10 @@ from PIL import Image
 
 # Room-type int -> colour for rendering (matches scripts/sample.py).
 ROOM_COLORS: dict[int, str] = {
-    1: "#EE4D4D",   # living
-    2: "#C67C7B",   # bedroom
-    3: "#FFD274",   # kitchen
-    4: "#BEBEBE",   # bathroom
+    1: "#EE4D4D",  # living
+    2: "#C67C7B",  # bedroom
+    3: "#FFD274",  # kitchen
+    4: "#BEBEBE",  # bathroom
     10: "#1F849B",  # balcony
     11: "#E78AC3",  # door (interior)
     13: "#A63603",  # front_door

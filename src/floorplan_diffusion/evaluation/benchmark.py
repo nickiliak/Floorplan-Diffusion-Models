@@ -46,7 +46,6 @@ class AggregatedResults:
 
 def run_benchmark(
     checkpoint_path: Path,
-    config_path: Path,
     num_runs: int = 5,
     num_samples: int = 1000,
     batch_size: int = 16,
@@ -60,7 +59,6 @@ def run_benchmark(
 
     Args:
         checkpoint_path: Path to a Lightning ``.ckpt`` file.
-        config_path: Path to YAML experiment config.
         num_runs: Number of independent sampling runs.
         num_samples: Samples per run.
         batch_size: Batch size for reverse diffusion.
@@ -70,10 +68,9 @@ def run_benchmark(
     Returns:
         Aggregated benchmark results.
     """
-    # Import sampling helpers from scripts.
     from floorplan_diffusion.data.dataset import ResPlanDataset
+    from floorplan_diffusion.models.sampling import create_model_and_diffusion, generate_samples
     from floorplan_diffusion.training.lightning_module import FloorplanDiffusionModule
-    from scripts.sample import create_model_and_diffusion, generate_samples
 
     logger.info("Loading model from %s", checkpoint_path)
     model, diffusion = create_model_and_diffusion()
@@ -96,7 +93,9 @@ def run_benchmark(
     if actual_samples < num_samples:
         logger.warning(
             "Dataset has only %d samples, using %d instead of requested %d",
-            n_total, actual_samples, num_samples,
+            n_total,
+            actual_samples,
+            num_samples,
         )
 
     per_run_results: list[BenchmarkResult] = []
@@ -126,7 +125,10 @@ def run_benchmark(
 
             # Generate samples.
             generated = generate_samples(
-                model, diffusion, cond_batch, device=torch_device,
+                model,
+                diffusion,
+                cond_batch,
+                device=torch_device,
             )
             generated_np = generated.cpu().numpy()  # [batch, 2, 100]
 
@@ -141,10 +143,16 @@ def run_benchmark(
                 door_mask = cond["door_mask"]
 
                 gen_polys = points_to_room_polygons(
-                    gen_points, room_types, room_indices, padding_mask,
+                    gen_points,
+                    room_types,
+                    room_indices,
+                    padding_mask,
                 )
                 gt_polys = points_to_room_polygons(
-                    gt_points, room_types, room_indices, padding_mask,
+                    gt_points,
+                    room_types,
+                    room_indices,
+                    padding_mask,
                 )
 
                 all_gt_polys.append(gt_polys)
@@ -152,7 +160,11 @@ def run_benchmark(
 
                 # Graph compatibility errors.
                 errors = estimate_graph_errors(
-                    gen_polys, room_types, room_indices, padding_mask, door_mask,
+                    gen_polys,
+                    room_types,
+                    room_indices,
+                    padding_mask,
+                    door_mask,
                 )
                 all_graph_errors.append(errors)
 

@@ -80,12 +80,6 @@ def _build_gt_graph(
     graph.add_nodes_from(room_nodes)
     graph.add_node(-1)  # outside node
 
-    # Check for front-door rooms.
-    front_door_rooms: set[int] = set()
-    for i in range(n):
-        if pt_type[i] == _FRONT_DOOR:
-            front_door_rooms.add(pt_room[i])
-
     # Find room-level edges from door_mask.
     edges: set[tuple[int, int]] = set()
     for i in range(n):

@@ -26,6 +26,4 @@ def compute_fid(
     """
     from pytorch_fid.fid_score import calculate_fid_given_paths
 
-    return calculate_fid_given_paths(
-        [str(gt_dir), str(pred_dir)], batch_size, device, dims
-    )
+    return calculate_fid_given_paths([str(gt_dir), str(pred_dir)], batch_size, device, dims)
