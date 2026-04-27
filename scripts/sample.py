@@ -18,6 +18,7 @@ import numpy as np
 import torch
 
 from src.floorplan_diffusion.data.dataset import ROOM_TYPE_TO_INT, ResPlanDataset
+from src.floorplan_diffusion.evaluation.render import ROOM_COLORS, points_to_room_polygons
 from src.floorplan_diffusion.models.gaussian_diffusion import (
     LossType,
     ModelMeanType,
@@ -30,58 +31,12 @@ from src.floorplan_diffusion.training.lightning_module import FloorplanDiffusion
 
 logger = logging.getLogger(__name__)
 
-# Room-type int → colour for rendering.
-ROOM_COLORS: dict[int, str] = {
-    1:  "#EE4D4D",   # living
-    2:  "#C67C7B",   # bedroom
-    3:  "#FFD274",   # kitchen
-    4:  "#BEBEBE",   # bathroom
-    10: "#1F849B",   # balcony
-    11: "#E78AC3",   # door (interior)
-    13: "#A63603",   # front_door
-}
-
 INT_TO_ROOM_NAME: dict[int, str] = {v: k for k, v in ROOM_TYPE_TO_INT.items()}
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
-
-
-def points_to_room_polygons(
-    points: np.ndarray,
-    room_types: np.ndarray,
-    room_indices: np.ndarray,
-    padding_mask: np.ndarray,
-) -> list[tuple[np.ndarray, int]]:
-    """Group generated points into per-room polygons.
-
-    Args:
-        points: ``[100, 2]`` array of (x, y) coordinates in [-1, 1].
-        room_types: ``[100, 25]`` one-hot room type per point.
-        room_indices: ``[100, 32]`` one-hot room index per point.
-        padding_mask: ``[100]`` — 0 for real, 1 for padding.
-
-    Returns:
-        List of ``(polygon_coords, room_type_int)`` tuples.
-    """
-    rooms: dict[int, list[tuple[float, float]]] = {}
-    room_type_map: dict[int, int] = {}
-
-    for i in range(points.shape[0]):
-        if padding_mask[i] > 0.5:
-            continue
-        ridx = int(np.argmax(room_indices[i]))
-        rtype = int(np.argmax(room_types[i]))
-        rooms.setdefault(ridx, []).append((points[i, 0], points[i, 1]))
-        room_type_map[ridx] = rtype
-
-    result = []
-    for ridx in sorted(rooms.keys()):
-        coords = np.array(rooms[ridx])
-        result.append((coords, room_type_map[ridx]))
-    return result
 
 
 def render_floorplan(
