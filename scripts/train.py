@@ -199,7 +199,7 @@ def main() -> None:
     # --- Trainer ---
     trainer = pl.Trainer(
         max_steps=train_cfg["max_steps"],
-        check_val_every_n_epoch=train_cfg["check_val_every_n_epoch"],
+        val_check_interval=train_cfg["val_check_interval"],
         callbacks=callbacks,
         logger=csv_logger,
         log_every_n_steps=train_cfg["log_interval"],

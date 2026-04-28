@@ -98,7 +98,7 @@ def _get_any_geoms(geom_data: Any) -> list[Any]:
     if hasattr(geom_data, "geoms"):
         return [
             g for g in geom_data.geoms if isinstance(g, (Polygon, LineString)) and not g.is_empty
-        ]  # noqa: E501
+        ]
     return []
 
 

@@ -503,6 +503,123 @@ class TestTrainingLossesRuns:
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Config and Trainer kwarg validation
+# ---------------------------------------------------------------------------
+
+
+class TestValCheckIntervalConfig:
+    """Verify all configs use step-based val_check_interval, not epoch-based."""
+
+    CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
+
+    def _load_config(self, name: str) -> dict:
+        import yaml
+
+        path = self.CONFIG_DIR / name
+        assert path.exists(), f"Config file not found: {path}"
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    @pytest.mark.parametrize(
+        "config_name",
+        [
+            "resplan_housediff_def.yaml",
+            "resplan_housediff_stable_fp32.yaml",
+            "resplan_housediff_test.yaml",
+        ],
+    )
+    def test_val_check_interval_present(self, config_name: str):
+        cfg = self._load_config(config_name)
+        assert "val_check_interval" in cfg["training"], (
+            f"{config_name}: 'val_check_interval' key missing from training config"
+        )
+
+    @pytest.mark.parametrize(
+        "config_name",
+        [
+            "resplan_housediff_def.yaml",
+            "resplan_housediff_stable_fp32.yaml",
+            "resplan_housediff_test.yaml",
+        ],
+    )
+    def test_check_val_every_n_epoch_absent(self, config_name: str):
+        cfg = self._load_config(config_name)
+        assert "check_val_every_n_epoch" not in cfg["training"], (
+            f"{config_name}: obsolete 'check_val_every_n_epoch' key still present"
+        )
+
+    @pytest.mark.parametrize(
+        "config_name,expected_interval",
+        [
+            ("resplan_housediff_def.yaml", 10000),
+            ("resplan_housediff_stable_fp32.yaml", 25000),
+            ("resplan_housediff_test.yaml", 250),
+        ],
+    )
+    def test_val_check_interval_aligned_with_save_interval(
+        self, config_name: str, expected_interval: int
+    ):
+        cfg = self._load_config(config_name)
+        val_interval = cfg["training"]["val_check_interval"]
+        save_interval = cfg["training"]["save_interval"]
+        assert val_interval == expected_interval, (
+            f"{config_name}: val_check_interval={val_interval}, expected {expected_interval}"
+        )
+        assert val_interval == save_interval, (
+            f"{config_name}: val_check_interval ({val_interval}) should equal "
+            f"save_interval ({save_interval})"
+        )
+
+    @pytest.mark.parametrize(
+        "config_name",
+        [
+            "resplan_housediff_def.yaml",
+            "resplan_housediff_stable_fp32.yaml",
+            "resplan_housediff_test.yaml",
+        ],
+    )
+    def test_val_check_interval_is_positive_int(self, config_name: str):
+        cfg = self._load_config(config_name)
+        val_interval = cfg["training"]["val_check_interval"]
+        assert isinstance(val_interval, int) and val_interval > 0, (
+            f"{config_name}: val_check_interval must be a positive int, got {val_interval!r}"
+        )
+
+
+def test_train_script_uses_val_check_interval():
+    """Verify train.py passes val_check_interval to Trainer (not check_val_every_n_epoch)."""
+    import ast
+
+    train_script = Path(__file__).resolve().parent.parent / "scripts" / "train.py"
+    source = train_script.read_text()
+    tree = ast.parse(source)
+
+    trainer_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "Trainer"
+    ]
+    assert trainer_calls, "Could not find pl.Trainer(...) call in scripts/train.py"
+
+    trainer_call = trainer_calls[0]
+    kwarg_names = {kw.arg for kw in trainer_call.keywords}
+
+    assert "val_check_interval" in kwarg_names, (
+        "pl.Trainer() call is missing 'val_check_interval' kwarg"
+    )
+    assert "check_val_every_n_epoch" not in kwarg_names, (
+        "pl.Trainer() still uses obsolete 'check_val_every_n_epoch' kwarg"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Checks 4-6: Deferred (require real data + GPU training)
+# ---------------------------------------------------------------------------
+
+
 @pytest.mark.skip(reason="Requires ResPlan data and GPU training")
 def test_training_loss_decreases():
     """Check 4: Training loss decreases over time (model is learning)."""
