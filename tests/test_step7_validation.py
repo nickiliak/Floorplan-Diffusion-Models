@@ -507,6 +507,12 @@ class TestTrainingLossesRuns:
 # Config and Trainer kwarg validation
 # ---------------------------------------------------------------------------
 
+_ALL_CONFIG_NAMES = [
+    "resplan_housediff_def.yaml",
+    "resplan_housediff_stable_fp32.yaml",
+    "resplan_housediff_test.yaml",
+]
+
 
 class TestValCheckIntervalConfig:
     """Verify all configs use step-based val_check_interval, not epoch-based."""
@@ -521,28 +527,14 @@ class TestValCheckIntervalConfig:
         with open(path) as f:
             return yaml.safe_load(f)
 
-    @pytest.mark.parametrize(
-        "config_name",
-        [
-            "resplan_housediff_def.yaml",
-            "resplan_housediff_stable_fp32.yaml",
-            "resplan_housediff_test.yaml",
-        ],
-    )
+    @pytest.mark.parametrize("config_name", _ALL_CONFIG_NAMES)
     def test_val_check_interval_present(self, config_name: str):
         cfg = self._load_config(config_name)
         assert "val_check_interval" in cfg["training"], (
             f"{config_name}: 'val_check_interval' key missing from training config"
         )
 
-    @pytest.mark.parametrize(
-        "config_name",
-        [
-            "resplan_housediff_def.yaml",
-            "resplan_housediff_stable_fp32.yaml",
-            "resplan_housediff_test.yaml",
-        ],
-    )
+    @pytest.mark.parametrize("config_name", _ALL_CONFIG_NAMES)
     def test_check_val_every_n_epoch_absent(self, config_name: str):
         cfg = self._load_config(config_name)
         assert "check_val_every_n_epoch" not in cfg["training"], (
@@ -571,14 +563,7 @@ class TestValCheckIntervalConfig:
             f"save_interval ({save_interval})"
         )
 
-    @pytest.mark.parametrize(
-        "config_name",
-        [
-            "resplan_housediff_def.yaml",
-            "resplan_housediff_stable_fp32.yaml",
-            "resplan_housediff_test.yaml",
-        ],
-    )
+    @pytest.mark.parametrize("config_name", _ALL_CONFIG_NAMES)
     def test_val_check_interval_is_positive_int(self, config_name: str):
         cfg = self._load_config(config_name)
         val_interval = cfg["training"]["val_check_interval"]
