@@ -59,9 +59,7 @@ class ResPlanDataModule(pl.LightningDataModule):
         n_val = max(1, int(n_total * self.val_fraction))
         n_train = n_total - n_val
 
-        self.train_dataset, self._val_subset = random_split(
-            full_dataset, [n_train, n_val]
-        )
+        self.train_dataset, self._val_subset = random_split(full_dataset, [n_train, n_val])
 
         # The val subset wraps the same underlying dataset (set_name="train"),
         # meaning rotation augmentation still fires. We fix this by wrapping

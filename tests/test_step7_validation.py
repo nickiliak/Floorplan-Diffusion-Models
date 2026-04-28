@@ -23,16 +23,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "external" / "house_diffusion"))
 
-from src.floorplan_diffusion.data.dataset import ResPlanDataset
-from src.floorplan_diffusion.models.gaussian_diffusion import (
+from src.floorplan_diffusion.data.dataset import ResPlanDataset  # noqa: E402
+from src.floorplan_diffusion.models.gaussian_diffusion import (  # noqa: E402
     GaussianDiffusion,
     LossType,
     ModelMeanType,
     ModelVarType,
     get_named_beta_schedule,
 )
-from src.floorplan_diffusion.models.respace import SpacedDiffusion, space_timesteps
-from src.floorplan_diffusion.models.transformer import TransformerModel
+from src.floorplan_diffusion.models.respace import SpacedDiffusion, space_timesteps  # noqa: E402
+from src.floorplan_diffusion.models.transformer import TransformerModel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -193,9 +193,7 @@ class TestDatasetMaskProperties:
         # living (0:4) <-> kitchen (8:12): connected.
         assert np.all(dm[0:4, 8:12] == 0)
         # bedroom (4:8) <-> kitchen (8:12): NOT connected, so door_mask=1.
-        assert np.all(dm[4:8, 8:12] == 1), (
-            "door_mask should be 1 between non-connected rooms"
-        )
+        assert np.all(dm[4:8, 8:12] == 1), "door_mask should be 1 between non-connected rooms"
 
 
 class TestDatasetCoordinateNormalization:
@@ -254,7 +252,7 @@ class TestTransformerIdentical:
         original.eval()
 
         # Synthetic inputs.
-        B, S = 2, 100
+        B, S = 2, 100  # noqa: N806
         th.manual_seed(0)
         x = th.randn(B, 2, S)
         timesteps = th.tensor([50, 100])
@@ -324,15 +322,23 @@ class TestDiffusionScheduleIdentical:
         orig_betas = orig_get_schedule(schedule, steps)
 
         np.testing.assert_allclose(
-            ported_betas, orig_betas, atol=1e-12,
+            ported_betas,
+            orig_betas,
+            atol=1e-12,
             err_msg=f"{schedule} beta schedules differ",
         )
 
     def test_diffusion_precomputed_arrays_identical(self):
         from house_diffusion.gaussian_diffusion import (
             GaussianDiffusion as OrigGaussianDiffusion,
+        )
+        from house_diffusion.gaussian_diffusion import (
             LossType as OrigLossType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelMeanType as OrigModelMeanType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelVarType as OrigModelVarType,
         )
 
@@ -374,8 +380,14 @@ class TestDiffusionScheduleIdentical:
     def test_q_sample_identical(self):
         from house_diffusion.gaussian_diffusion import (
             GaussianDiffusion as OrigGaussianDiffusion,
+        )
+        from house_diffusion.gaussian_diffusion import (
             LossType as OrigLossType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelMeanType as OrigModelMeanType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelVarType as OrigModelVarType,
         )
 
@@ -431,7 +443,7 @@ class TestTrainingLossesRuns:
             analog_bit=False,
         )
 
-        B, S = 2, 100
+        B, S = 2, 100  # noqa: N806
         x_start = th.randn(B, 2, S) * 0.5  # keep in reasonable range
 
         # Build conditioning.
@@ -477,9 +489,7 @@ class TestTrainingLossesRuns:
         }
 
         t = th.randint(0, 100, (B,))
-        terms = diffusion.training_losses(
-            model, x_start, t, model_kwargs, analog_bit=False
-        )
+        terms = diffusion.training_losses(model, x_start, t, model_kwargs, analog_bit=False)
 
         assert "loss" in terms, "training_losses must return 'loss' key"
         assert "mse_dec" in terms, "training_losses must return 'mse_dec' key"

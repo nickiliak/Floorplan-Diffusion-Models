@@ -32,13 +32,13 @@ logger = logging.getLogger(__name__)
 
 # Room-type int → colour for rendering.
 ROOM_COLORS: dict[int, str] = {
-    1:  "#EE4D4D",   # living
-    2:  "#C67C7B",   # bedroom
-    3:  "#FFD274",   # kitchen
-    4:  "#BEBEBE",   # bathroom
-    10: "#1F849B",   # balcony
-    11: "#E78AC3",   # door (interior)
-    13: "#A63603",   # front_door
+    1: "#EE4D4D",  # living
+    2: "#C67C7B",  # bedroom
+    3: "#FFD274",  # kitchen
+    4: "#BEBEBE",  # bathroom
+    10: "#1F849B",  # balcony
+    11: "#E78AC3",  # door (interior)
+    13: "#A63603",  # front_door
 }
 
 INT_TO_ROOM_NAME: dict[int, str] = {v: k for k, v in ROOM_TYPE_TO_INT.items()}
@@ -106,9 +106,15 @@ def render_floorplan(
         color = ROOM_COLORS.get(rtype, "#888888")
         label = INT_TO_ROOM_NAME.get(rtype, f"type_{rtype}")
         if len(coords) >= 3:
-            poly = plt.Polygon(coords, closed=True, facecolor=color,
-                               edgecolor="black", linewidth=1.0, alpha=0.7,
-                               label=label)
+            poly = plt.Polygon(
+                coords,
+                closed=True,
+                facecolor=color,
+                edgecolor="black",
+                linewidth=1.0,
+                alpha=0.7,
+                label=label,
+            )
             ax.add_patch(poly)
         # Draw corner markers.
         ax.scatter(coords[:, 0], coords[:, 1], s=10, c="black", zorder=5)
@@ -167,11 +173,13 @@ def compute_graph_accuracy_from_points(
                 continue
             # Pick a representative point from each room.
             pa = next(
-                i for i in range(100)
+                i
+                for i in range(100)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == ra
             )
             pb = next(
-                i for i in range(100)
+                i
+                for i in range(100)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == rb
             )
             if door_mask[pa, pb] < 0.5:
@@ -186,7 +194,7 @@ def compute_graph_accuracy_from_points(
         pts_b = ridx_to_pts[rb]
         # Minimum pairwise distance.
         diffs = pts_a[:, None, :] - pts_b[None, :, :]
-        dists = np.sqrt((diffs ** 2).sum(axis=-1))
+        dists = np.sqrt((diffs**2).sum(axis=-1))
         if dists.min() < adjacency_threshold:
             satisfied += 1
 
@@ -280,15 +288,21 @@ def main() -> None:
     """Entry point for sampling."""
     parser = argparse.ArgumentParser(description="Sample floorplans from a trained model")
     parser.add_argument(
-        "--checkpoint", type=str, required=True,
+        "--checkpoint",
+        type=str,
+        required=True,
         help="Path to a Lightning checkpoint (.ckpt)",
     )
     parser.add_argument(
-        "--pickle_path", type=str, default="data/raw/ResPlan.pkl",
+        "--pickle_path",
+        type=str,
+        default="data/raw/ResPlan.pkl",
         help="Path to ResPlan pickle (for conditioning data)",
     )
     parser.add_argument(
-        "--cache_dir", type=str, default="data/processed",
+        "--cache_dir",
+        type=str,
+        default="data/processed",
         help="Cache directory for processed tensors",
     )
     parser.add_argument("--num_samples", type=int, default=8, help="How many to generate")
@@ -296,7 +310,9 @@ def main() -> None:
     parser.add_argument("--output_dir", type=str, default="outputs", help="Output directory")
     parser.add_argument("--device", type=str, default="auto", help="Device (cpu/cuda/auto)")
     parser.add_argument(
-        "--analog_bit", action="store_true", default=False,
+        "--analog_bit",
+        action="store_true",
+        default=False,
         help="Use analog mode (default: binary)",
     )
     args = parser.parse_args()
@@ -361,8 +377,11 @@ def main() -> None:
         # Generate.
         logger.info("Generating batch %d–%d ...", sample_idx, batch_end - 1)
         generated = generate_samples(
-            model, diffusion, cond_batch,
-            analog_bit=args.analog_bit, device=device,
+            model,
+            diffusion,
+            cond_batch,
+            analog_bit=args.analog_bit,
+            device=device,
         )
         generated_np = generated.cpu().numpy()  # [batch, 2, 100]
 
@@ -380,15 +399,24 @@ def main() -> None:
 
             # Build polygons.
             gen_polys = points_to_room_polygons(
-                gen_points, room_types, room_indices, padding_mask,
+                gen_points,
+                room_types,
+                room_indices,
+                padding_mask,
             )
             gt_polys = points_to_room_polygons(
-                gt_points, room_types, room_indices, padding_mask,
+                gt_points,
+                room_types,
+                room_indices,
+                padding_mask,
             )
 
             # Graph accuracy.
             accuracy = compute_graph_accuracy_from_points(
-                gen_points, door_mask, room_indices, padding_mask,
+                gen_points,
+                door_mask,
+                room_indices,
+                padding_mask,
             )
             all_accuracies.append(accuracy)
 
@@ -401,8 +429,7 @@ def main() -> None:
             handles, labels = axes[1].get_legend_handles_labels()
             seen = set()
             unique = [
-                (h, lab) for h, lab in zip(handles, labels)
-                if lab not in seen and not seen.add(lab)
+                (h, lab) for h, lab in zip(handles, labels) if lab not in seen and not seen.add(lab)
             ]
             if unique:
                 fig.legend(*zip(*unique), loc="lower center", ncol=len(unique), fontsize=9)
@@ -412,7 +439,9 @@ def main() -> None:
             plt.close(fig)
             logger.info(
                 "  [%d] graph_accuracy=%.2f  saved to %s",
-                idx, accuracy, output_dir / f"sample_{idx:04d}.png",
+                idx,
+                accuracy,
+                output_dir / f"sample_{idx:04d}.png",
             )
 
         sample_idx = batch_end
@@ -423,7 +452,9 @@ def main() -> None:
         std_acc = np.std(all_accuracies)
         logger.info(
             "Graph accuracy: %.4f ± %.4f  (n=%d)",
-            mean_acc, std_acc, len(all_accuracies),
+            mean_acc,
+            std_acc,
+            len(all_accuracies),
         )
     logger.info("Sampling complete. Outputs in %s", output_dir)
 

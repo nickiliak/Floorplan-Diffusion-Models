@@ -128,11 +128,15 @@ def main() -> None:
     """Entry point for training."""
     parser = argparse.ArgumentParser(description="Train floorplan diffusion model")
     parser.add_argument(
-        "--config", type=str, required=True,
+        "--config",
+        type=str,
+        required=True,
         help="Path to YAML config file (e.g. configs/resplan_housediff.yaml)",
     )
     parser.add_argument(
-        "--resume", type=str, default=None,
+        "--resume",
+        type=str,
+        default=None,
         help="Path to checkpoint to resume training from",
     )
     args, remaining = parser.parse_known_args()
