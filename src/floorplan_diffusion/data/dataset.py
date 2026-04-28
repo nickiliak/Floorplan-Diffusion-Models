@@ -36,7 +36,7 @@ ROOM_TYPES: list[str] = ["living", "bedroom", "kitchen", "bathroom", "balcony"]
 """Canonical ordering of room types when iterating a plan."""
 
 DOOR_TYPES: dict[str, int] = {
-    "door": 11,        # interior door opening  (matches RPLAN type 11)
+    "door": 11,  # interior door opening  (matches RPLAN type 11)
     "front_door": 13,  # building entry door    (matches RPLAN type 13)
 }
 """Mapping from ResPlan door-geometry keys to RPLAN integer encoding."""
@@ -96,7 +96,9 @@ def _get_any_geoms(geom_data: Any) -> list[Any]:
     if isinstance(geom_data, (Polygon, LineString)):
         return [] if geom_data.is_empty else [geom_data]
     if hasattr(geom_data, "geoms"):
-        return [g for g in geom_data.geoms if isinstance(g, (Polygon, LineString)) and not g.is_empty]
+        return [
+            g for g in geom_data.geoms if isinstance(g, (Polygon, LineString)) and not g.is_empty
+        ]
     return []
 
 
@@ -309,7 +311,8 @@ class ResPlanDataset(Dataset):
             if len(corners) > 32:
                 logger.debug(
                     "Room %s has %d corners (>32); rejecting plan.",
-                    node_id, len(corners),
+                    node_id,
+                    len(corners),
                 )
                 return None
 
@@ -336,7 +339,7 @@ class ResPlanDataset(Dataset):
 
             # Room index is 1-indexed (first room -> index 1).
             room_idx_oh = np.tile(_get_one_hot(len(house_parts) + 1, 32), (num_room_corners, 1))
-                
+
             corner_idx_oh = np.array([_get_one_hot(c, 32) for c in range(num_room_corners)])
 
             # Padding mask: 1 for real points.

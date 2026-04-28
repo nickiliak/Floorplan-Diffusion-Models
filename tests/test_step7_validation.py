@@ -23,16 +23,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "external" / "house_diffusion"))
 
-from src.floorplan_diffusion.data.dataset import ResPlanDataset
-from src.floorplan_diffusion.models.gaussian_diffusion import (
+from src.floorplan_diffusion.data.dataset import ResPlanDataset  # noqa: E402
+from src.floorplan_diffusion.models.gaussian_diffusion import (  # noqa: E402
     GaussianDiffusion,
     LossType,
     ModelMeanType,
     ModelVarType,
     get_named_beta_schedule,
 )
-from src.floorplan_diffusion.models.respace import SpacedDiffusion, space_timesteps
-from src.floorplan_diffusion.models.transformer import TransformerModel
+from src.floorplan_diffusion.models.respace import SpacedDiffusion, space_timesteps  # noqa: E402
+from src.floorplan_diffusion.models.transformer import TransformerModel  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -193,9 +193,7 @@ class TestDatasetMaskProperties:
         # living (0:4) <-> kitchen (8:12): connected.
         assert np.all(dm[0:4, 8:12] == 0)
         # bedroom (4:8) <-> kitchen (8:12): NOT connected, so door_mask=1.
-        assert np.all(dm[4:8, 8:12] == 1), (
-            "door_mask should be 1 between non-connected rooms"
-        )
+        assert np.all(dm[4:8, 8:12] == 1), "door_mask should be 1 between non-connected rooms"
 
 
 class TestDatasetCoordinateNormalization:
@@ -254,7 +252,7 @@ class TestTransformerIdentical:
         original.eval()
 
         # Synthetic inputs.
-        B, S = 2, 100
+        B, S = 2, 100  # noqa: N806
         th.manual_seed(0)
         x = th.randn(B, 2, S)
         timesteps = th.tensor([50, 100])
@@ -324,15 +322,23 @@ class TestDiffusionScheduleIdentical:
         orig_betas = orig_get_schedule(schedule, steps)
 
         np.testing.assert_allclose(
-            ported_betas, orig_betas, atol=1e-12,
+            ported_betas,
+            orig_betas,
+            atol=1e-12,
             err_msg=f"{schedule} beta schedules differ",
         )
 
     def test_diffusion_precomputed_arrays_identical(self):
         from house_diffusion.gaussian_diffusion import (
             GaussianDiffusion as OrigGaussianDiffusion,
+        )
+        from house_diffusion.gaussian_diffusion import (
             LossType as OrigLossType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelMeanType as OrigModelMeanType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelVarType as OrigModelVarType,
         )
 
@@ -374,8 +380,14 @@ class TestDiffusionScheduleIdentical:
     def test_q_sample_identical(self):
         from house_diffusion.gaussian_diffusion import (
             GaussianDiffusion as OrigGaussianDiffusion,
+        )
+        from house_diffusion.gaussian_diffusion import (
             LossType as OrigLossType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelMeanType as OrigModelMeanType,
+        )
+        from house_diffusion.gaussian_diffusion import (
             ModelVarType as OrigModelVarType,
         )
 
@@ -431,7 +443,7 @@ class TestTrainingLossesRuns:
             analog_bit=False,
         )
 
-        B, S = 2, 100
+        B, S = 2, 100  # noqa: N806
         x_start = th.randn(B, 2, S) * 0.5  # keep in reasonable range
 
         # Build conditioning.
@@ -477,15 +489,115 @@ class TestTrainingLossesRuns:
         }
 
         t = th.randint(0, 100, (B,))
-        terms = diffusion.training_losses(
-            model, x_start, t, model_kwargs, analog_bit=False
-        )
+        terms = diffusion.training_losses(model, x_start, t, model_kwargs, analog_bit=False)
 
         assert "loss" in terms, "training_losses must return 'loss' key"
         assert "mse_dec" in terms, "training_losses must return 'mse_dec' key"
         assert "mse_bin" in terms, "training_losses must return 'mse_bin' key"
         assert terms["loss"].shape == (B,), f"loss shape: {terms['loss'].shape}"
         assert th.isfinite(terms["loss"]).all(), "loss contains non-finite values"
+
+
+# ---------------------------------------------------------------------------
+# Checks 4-6: Deferred (require real data + GPU training)
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Config and Trainer kwarg validation
+# ---------------------------------------------------------------------------
+
+_ALL_CONFIG_NAMES = [
+    "resplan_housediff_def.yaml",
+    "resplan_housediff_stable_fp32.yaml",
+    "resplan_housediff_test.yaml",
+]
+
+
+class TestValCheckIntervalConfig:
+    """Verify all configs use step-based val_check_interval, not epoch-based."""
+
+    CONFIG_DIR = Path(__file__).resolve().parent.parent / "configs"
+
+    def _load_config(self, name: str) -> dict:
+        import yaml
+
+        path = self.CONFIG_DIR / name
+        assert path.exists(), f"Config file not found: {path}"
+        with open(path) as f:
+            return yaml.safe_load(f)
+
+    @pytest.mark.parametrize("config_name", _ALL_CONFIG_NAMES)
+    def test_val_check_interval_present(self, config_name: str):
+        cfg = self._load_config(config_name)
+        assert "val_check_interval" in cfg["training"], (
+            f"{config_name}: 'val_check_interval' key missing from training config"
+        )
+
+    @pytest.mark.parametrize("config_name", _ALL_CONFIG_NAMES)
+    def test_check_val_every_n_epoch_absent(self, config_name: str):
+        cfg = self._load_config(config_name)
+        assert "check_val_every_n_epoch" not in cfg["training"], (
+            f"{config_name}: obsolete 'check_val_every_n_epoch' key still present"
+        )
+
+    @pytest.mark.parametrize(
+        "config_name,expected_interval",
+        [
+            ("resplan_housediff_def.yaml", 10000),
+            ("resplan_housediff_stable_fp32.yaml", 25000),
+            ("resplan_housediff_test.yaml", 250),
+        ],
+    )
+    def test_val_check_interval_aligned_with_save_interval(
+        self, config_name: str, expected_interval: int
+    ):
+        cfg = self._load_config(config_name)
+        val_interval = cfg["training"]["val_check_interval"]
+        save_interval = cfg["training"]["save_interval"]
+        assert val_interval == expected_interval, (
+            f"{config_name}: val_check_interval={val_interval}, expected {expected_interval}"
+        )
+        assert val_interval == save_interval, (
+            f"{config_name}: val_check_interval ({val_interval}) should equal "
+            f"save_interval ({save_interval})"
+        )
+
+    @pytest.mark.parametrize("config_name", _ALL_CONFIG_NAMES)
+    def test_val_check_interval_is_positive_int(self, config_name: str):
+        cfg = self._load_config(config_name)
+        val_interval = cfg["training"]["val_check_interval"]
+        assert isinstance(val_interval, int) and val_interval > 0, (
+            f"{config_name}: val_check_interval must be a positive int, got {val_interval!r}"
+        )
+
+
+def test_train_script_uses_val_check_interval():
+    """Verify train.py passes val_check_interval to Trainer (not check_val_every_n_epoch)."""
+    import ast
+
+    train_script = Path(__file__).resolve().parent.parent / "scripts" / "train.py"
+    source = train_script.read_text()
+    tree = ast.parse(source)
+
+    trainer_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "Trainer"
+    ]
+    assert trainer_calls, "Could not find pl.Trainer(...) call in scripts/train.py"
+
+    trainer_call = trainer_calls[0]
+    kwarg_names = {kw.arg for kw in trainer_call.keywords}
+
+    assert "val_check_interval" in kwarg_names, (
+        "pl.Trainer() call is missing 'val_check_interval' kwarg"
+    )
+    assert "check_val_every_n_epoch" not in kwarg_names, (
+        "pl.Trainer() still uses obsolete 'check_val_every_n_epoch' kwarg"
+    )
 
 
 # ---------------------------------------------------------------------------
