@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Constants
 # ---------------------------------------------------------------------------
 
-ROOM_TYPES: list[str] = ["living", "bedroom", "kitchen", "bathroom", "balcony"]
+ROOM_TYPES: list[str] = ["living", "bedroom", "kitchen","window","bathroom", "balcony"]
 """Canonical ordering of room types when iterating a plan."""
 
 DOOR_TYPES: dict[str, int] = {
@@ -46,6 +46,7 @@ ROOM_TYPE_TO_INT: dict[str, int] = {
     "bedroom": 2,
     "kitchen": 3,
     "bathroom": 4,
+    "window": 5,
     "balcony": 10,
     "door": 11,
     "front_door": 13,
