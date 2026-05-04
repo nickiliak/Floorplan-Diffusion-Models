@@ -59,12 +59,22 @@ def points_to_room_polygons(
     return result
 
 
+DOOR_TYPES: frozenset[int] = frozenset({11, 13})
+
+
+def _is_degenerate(coords: np.ndarray) -> bool:
+    if coords.ndim != 2 or coords.shape[0] < 3:
+        return True
+    return len(np.unique(coords, axis=0)) < 3
+
+
 def render_floorplan_png(
     room_polygons: list[tuple[np.ndarray, int]],
     output_path: Path,
     resolution: int = 256,
     include_doors: bool = True,
-) -> None:
+    skip_if_degenerate: bool = False,
+) -> bool:
     """Render room polygons to a PNG file.
 
     Args:
@@ -73,72 +83,71 @@ def render_floorplan_png(
         output_path: Destination path for the PNG.
         resolution: Image width/height in pixels.
         include_doors: Whether to render door polygons.
+        skip_if_degenerate: If True, return without writing when any visible
+            room has fewer than 3 distinct points. If False (default),
+            degenerate rooms are dropped individually and the rest is drawn.
+
+    Returns:
+        True if a PNG was written, False if the floorplan was skipped.
     """
     import cairosvg
     import drawsvg
 
+    visible = [(c, t) for c, t in room_polygons if include_doors or t not in DOOR_TYPES]
+    if skip_if_degenerate and any(_is_degenerate(c) for c, _ in visible):
+        return False
+    visible = [(c, t) for c, t in visible if not _is_degenerate(c)]
+    # Doors drawn last so they layer on top of rooms.
+    visible.sort(key=lambda r: r[1] in DOOR_TYPES)
+
     drawing = drawsvg.Drawing(resolution, resolution, displayInline=False)
     drawing.append(drawsvg.Rectangle(0, 0, resolution, resolution, fill="white"))
-
-    door_types = {11, 13}
-
-    # Draw rooms first, then doors on top (matching reference ordering).
-    for coords, rtype in room_polygons:
-        if rtype in door_types and not include_doors:
-            continue
-        if rtype in door_types:
-            continue  # defer doors to second pass
-        color = ROOM_COLORS.get(rtype, "#888888")
+    for coords, rtype in visible:
         pixel_coords = (coords / 2 + 0.5) * resolution
-        flat = pixel_coords.flatten().tolist()
         drawing.append(
             drawsvg.Lines(
-                *flat,
+                *pixel_coords.flatten().tolist(),
                 close=True,
-                fill=color,
+                fill=ROOM_COLORS.get(rtype, "#888888"),
                 fill_opacity=1.0,
                 stroke="black",
                 stroke_width=1,
             )
         )
 
-    if include_doors:
-        for coords, rtype in room_polygons:
-            if rtype not in door_types:
-                continue
-            color = ROOM_COLORS.get(rtype, "#888888")
-            pixel_coords = (coords / 2 + 0.5) * resolution
-            flat = pixel_coords.flatten().tolist()
-            drawing.append(
-                drawsvg.Lines(
-                    *flat,
-                    close=True,
-                    fill=color,
-                    fill_opacity=1.0,
-                    stroke="black",
-                    stroke_width=1,
-                )
-            )
-
     png_bytes = cairosvg.svg2png(drawing.as_svg())
-    img = Image.open(io.BytesIO(png_bytes)).convert("RGB")
-    img = img.resize((resolution, resolution))
+    img = Image.open(io.BytesIO(png_bytes)).convert("RGB").resize((resolution, resolution))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     img.save(output_path)
+    return True
 
 
 def render_batch_to_dir(
     samples: list[list[tuple[np.ndarray, int]]],
     output_dir: Path,
     resolution: int = 256,
-) -> None:
+    skip_if_degenerate: bool = False,
+) -> int:
     """Render a batch of floorplans to numbered PNGs in a directory.
 
     Args:
         samples: List of room-polygon lists (one per floorplan).
         output_dir: Directory to write ``0000.png``, ``0001.png``, etc.
         resolution: Image width/height in pixels.
+        skip_if_degenerate: Forwarded to :func:`render_floorplan_png`. Skipped
+            floorplans leave no gap in the output numbering.
+
+    Returns:
+        Number of floorplans actually written.
     """
     output_dir.mkdir(parents=True, exist_ok=True)
-    for i, room_polygons in enumerate(samples):
-        render_floorplan_png(room_polygons, output_dir / f"{i:04d}.png", resolution)
+    written = 0
+    for room_polygons in samples:
+        if render_floorplan_png(
+            room_polygons,
+            output_dir / f"{written:04d}.png",
+            resolution,
+            skip_if_degenerate=skip_if_degenerate,
+        ):
+            written += 1
+    return written

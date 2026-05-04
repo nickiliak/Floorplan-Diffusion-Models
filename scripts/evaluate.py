@@ -25,6 +25,8 @@ def main() -> None:
     parser.add_argument("--batch_size", type=int, default=16)
     parser.add_argument("--output_dir", type=Path, default=Path("outputs/benchmark"))
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--pickle_path", type=Path, default=Path("data/raw/ResPlan.pkl"))
+    parser.add_argument("--cache_dir", type=Path, default=Path("data/processed"))
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -39,6 +41,8 @@ def main() -> None:
         batch_size=args.batch_size,
         output_dir=args.output_dir,
         device=args.device,
+        pickle_path=args.pickle_path,
+        cache_dir=args.cache_dir,
     )
 
     print(f"\n{'=' * 60}")

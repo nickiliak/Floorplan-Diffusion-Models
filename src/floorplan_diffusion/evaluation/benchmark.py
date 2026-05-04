@@ -51,6 +51,8 @@ def run_benchmark(
     batch_size: int = 16,
     output_dir: Path = Path("outputs/benchmark"),
     device: str = "cuda",
+    pickle_path: Path = Path("data/raw/ResPlan.pkl"),
+    cache_dir: Path = Path("data/processed"),
 ) -> AggregatedResults:
     """Run the full HouseDiffusion benchmark suite.
 
@@ -87,7 +89,11 @@ def run_benchmark(
     model.eval()
 
     logger.info("Loading validation dataset...")
-    dataset = ResPlanDataset(set_name="eval")
+    dataset = ResPlanDataset(
+        pickle_path=pickle_path,
+        cache_dir=cache_dir,
+        set_name="eval",
+    )
     n_total = len(dataset)
     actual_samples = min(num_samples, n_total)
     if actual_samples < num_samples:
