@@ -261,7 +261,7 @@ class ResPlanDataset(Dataset):
         inner = plan.get("inner")
         if inner is None or inner.is_empty:
             return None
-        minx, miny, maxx, maxy = inner.bounds
+        minx, miny, maxx, maxy = inner.bounds   #########FLAG#########
         cx = (minx + maxx) / 2.0
         cy = (miny + maxy) / 2.0
         half_extent = max(maxx - minx, maxy - miny) / 2.0
