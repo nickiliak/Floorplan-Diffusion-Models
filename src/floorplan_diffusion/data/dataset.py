@@ -4,7 +4,7 @@ Loads a ResPlan pickle file, extracts room polygons and connectivity graphs,
 and produces tensors that exactly match the format expected by the
 HouseDiffusion Transformer model.
 
-Each plan is encoded as a 94-column array (100 rows, zero-padded) plus
+Each plan is encoded as a NUM_COLUMNS-wide array (100 rows, zero-padded) plus
 three 100x100 attention masks. Plans with more than 100 total polygon
 vertices are filtered out. Processed tensors are cached as ``.npz`` files
 for fast subsequent loading.
@@ -52,7 +52,7 @@ ROOM_TYPE_TO_INT: dict[str, int] = {
 }
 """Mapping from ResPlan room-type strings to the RPLAN integer encoding."""
 
-MAX_NUM_POINTS: int = 100
+MAX_NUM_POINTS: int = 128
 """Maximum number of polygon vertices per plan (padding target)."""
 
 MAX_CORNERS_PER_ROOM: int = 64 #Added configurable corner limit
@@ -354,7 +354,7 @@ class ResPlanDataset(Dataset):
         node_id_to_room_idx: dict[str, int] = {}
         num_points = 0
 
-        for room_idx, (corners, rtype_int, node_id) in enumerate(rooms):
+        for _room_idx, (corners, rtype_int, node_id) in enumerate(rooms):
             num_room_corners = len(corners)
 
             # Normalize coordinates.

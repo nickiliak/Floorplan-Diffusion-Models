@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, ROOM_TYPE_TO_INT, ResPlanDataset
+from src.floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, MAX_NUM_POINTS, ROOM_TYPE_TO_INT, ResPlanDataset
 from src.floorplan_diffusion.models.gaussian_diffusion import (
     LossType,
     ModelMeanType,
@@ -174,12 +174,12 @@ def compute_graph_accuracy_from_points(
             # Pick a representative point from each room.
             pa = next(
                 i
-                for i in range(100)
+                for i in range(MAX_NUM_POINTS)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == ra
             )
             pb = next(
                 i
-                for i in range(100)
+                for i in range(MAX_NUM_POINTS)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == rb
             )
             if door_mask[pa, pb] < 0.5:
@@ -261,7 +261,7 @@ def generate_samples(
     """
     model.eval()
     batch_size = cond_batch["room_types"].shape[0]
-    shape = (batch_size, 2, 100)
+    shape = (batch_size, 2, MAX_NUM_POINTS)
 
     # Move conditioning to device.
     model_kwargs = {f"syn_{k}": v.float().to(device) for k, v in cond_batch.items()}
@@ -322,7 +322,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    output_dir = Path(args.output_dir)
+    ckpt_stem = Path(args.checkpoint).stem
+    output_dir = Path(args.output_dir) / ckpt_stem
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve device.

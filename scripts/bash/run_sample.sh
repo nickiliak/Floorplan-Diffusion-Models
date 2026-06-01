@@ -21,7 +21,7 @@ echo "--------------------------------------------------"
 
 # Environment Setup
 export PATH="$HOME/.local/bin:$PATH"
-cd ~/Floorplan-Diffusion-Models-BH || { echo "Project directory not found"; exit 1; }
+cd ~/Floorplan-Diffusion-Models || { echo "Project directory not found"; exit 1; }
 
 # Module Loading & Verification
 module load cuda/12.1
@@ -39,4 +39,5 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
 
 ## --- Execution ---
 echo ">>> Generating samples"
-uv run python -m scripts.sample --checkpoint models/checkpoints/last.ckpt
+uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=250000-val/loss=0.0017.ckpt
+uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=225000-val/loss=0.0015.ckpt
