@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 
-from src.floorplan_diffusion.data.dataset import ROOM_TYPE_TO_INT, ResPlanDataset
+from src.floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, ROOM_TYPE_TO_INT, ResPlanDataset
 from src.floorplan_diffusion.models.gaussian_diffusion import (
     LossType,
     ModelMeanType,
@@ -218,7 +218,7 @@ def create_model_and_diffusion(
 
     model = TransformerModel(
         in_channels=in_channels,
-        condition_channels=89,
+        condition_channels=25 + CORNER_IDX_DIMS + 32,
         model_channels=num_channels,
         out_channels=num_coords,
         dataset="rplan",

@@ -55,9 +55,15 @@ ROOM_TYPE_TO_INT: dict[str, int] = {
 MAX_NUM_POINTS: int = 100
 """Maximum number of polygon vertices per plan (padding target)."""
 
-NUM_COLUMNS: int = 94
+MAX_CORNERS_PER_ROOM: int = 64 #Added configurable corner limit
+"""Target maximum corners per room after simplification."""
+
+CORNER_IDX_DIMS: int = MAX_CORNERS_PER_ROOM 
+"""Dimensionality of the corner-index one-hot — must be >= MAX_CORNERS_PER_ROOM."""
+
+NUM_COLUMNS: int = 2 + 25 + CORNER_IDX_DIMS + 32 + 1 + 2
 """Width of the per-point feature vector:
-2 coords + 25 room_type + 32 corner_idx + 32 room_idx + 1 padding + 2 connections.
+2 coords + 25 room_type + CORNER_IDX_DIMS corner_idx + 32 room_idx + 1 padding + 2 connections.
 """
 
 # ---------------------------------------------------------------------------
@@ -105,6 +111,29 @@ def _get_any_geoms(geom_data: Any) -> list[Any]:
 def _get_one_hot(index: int, size: int) -> NDArray[np.float64]:
     """Return a one-hot vector of length *size* with a 1 at *index*."""
     return np.eye(size, dtype=np.float64)[index]
+
+
+def _simplify_polygon(poly: Polygon, max_corners: int = MAX_CORNERS_PER_ROOM) -> Polygon:
+    """Simplify a polygon until its exterior has at most *max_corners* vertices.
+
+    Uses Shapely's ``simplify()`` with exponentially increasing tolerance.
+    Returns the original polygon unchanged if it already meets the limit.
+    """
+    corners = len(poly.exterior.coords) - 1  # Shapely closes the ring with a duplicate
+    if corners <= max_corners:
+        return poly
+
+    tolerance = 0.5
+    simplified = poly
+    for _ in range(50):
+        candidate = poly.simplify(tolerance, preserve_topology=True)
+        if not candidate.is_empty and isinstance(candidate, Polygon):
+            simplified = candidate
+        if len(simplified.exterior.coords) - 1 <= max_corners:
+            break
+        tolerance *= 2
+
+    return simplified
 
 
 # ---------------------------------------------------------------------------
@@ -193,10 +222,10 @@ class ResPlanDataset(Dataset):
             "self_mask": self.self_masks[idx],
             "gen_mask": self.gen_masks[idx],
             "room_types": self.houses[idx][:, 2:27],
-            "corner_indices": self.houses[idx][:, 27:59],
-            "room_indices": self.houses[idx][:, 59:91],
-            "src_key_padding_mask": 1 - self.houses[idx][:, 91],
-            "connections": self.houses[idx][:, 92:94],
+            "corner_indices": self.houses[idx][:, 27 : 27 + CORNER_IDX_DIMS],
+            "room_indices": self.houses[idx][:, 27 + CORNER_IDX_DIMS : 27 + CORNER_IDX_DIMS + 32],
+            "src_key_padding_mask": 1 - self.houses[idx][:, 27 + CORNER_IDX_DIMS + 32],
+            "connections": self.houses[idx][:, 27 + CORNER_IDX_DIMS + 33 :],
         }
         return arr.astype(float), cond
 
@@ -279,6 +308,7 @@ class ResPlanDataset(Dataset):
                 continue
             polygons = _get_polygons(geom_data)
             for i, poly in enumerate(polygons):
+                poly = _simplify_polygon(poly)
                 # Shapely exterior.coords includes the closing duplicate — drop it.
                 corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
                 rooms.append((corners, ROOM_TYPE_TO_INT[room_type], f"{room_type}_{i}"))
@@ -297,20 +327,18 @@ class ResPlanDataset(Dataset):
                     continue
                 if poly.is_empty:
                     continue
+                poly = _simplify_polygon(poly)
                 corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
                 rooms.append((corners, door_type_int, f"{door_key}_{i}"))
 
         # -- 3. Reject plans containing rooms with >32 corners --
-        # Previously these rooms were silently skipped (`continue`), which
-        # corrupted graph connectivity — other rooms lost their adjacency
-        # edges to the dropped room.  Rejecting the entire plan avoids
-        # corrupted training signal.  Only ~268 plans (~1.78%) are affected.
-        # A future improvement (v2) could use polygon.simplify() to recover
-        # these plans after validating that simplified geometry is faithful.
+        # Polygons are simplified to MAX_CORNERS_PER_ROOM (64) before this check,
+        # so only plans where simplification could not reduce below 32 corners are
+        # rejected here (extremely complex geometry that can't be faithfully encoded).
         for corners, _rtype_int, node_id in rooms:
-            if len(corners) > 32:
+            if len(corners) > 64:
                 logger.debug(
-                    "Room %s has %d corners (>32); rejecting plan.",
+                    "Room %s has %d corners (>64); rejecting plan.",
                     node_id,
                     len(corners),
                 )
@@ -340,7 +368,7 @@ class ResPlanDataset(Dataset):
             # Room index is 1-indexed (first room -> index 1).
             room_idx_oh = np.tile(_get_one_hot(len(house_parts) + 1, 32), (num_room_corners, 1))
 
-            corner_idx_oh = np.array([_get_one_hot(c, 32) for c in range(num_room_corners)])
+            corner_idx_oh = np.array([_get_one_hot(c, CORNER_IDX_DIMS) for c in range(num_room_corners)])
 
             # Padding mask: 1 for real points.
             padding_mask = np.ones((num_room_corners, 1), dtype=np.float64)
@@ -357,7 +385,7 @@ class ResPlanDataset(Dataset):
             node_id_to_room_idx[node_id] = len(house_parts)
             num_points += num_room_corners
 
-            # Concatenate to 94 columns: 2 + 25 + 32 + 32 + 1 + 2 = 94.
+            # Concatenate to NUM_COLUMNS: 2 + 25 + CORNER_IDX_DIMS + 32 + 1 + 2.
             room_array = np.concatenate(
                 (coords, rtype_oh, corner_idx_oh, room_idx_oh, padding_mask, connections),
                 axis=1,
