@@ -39,6 +39,8 @@ dev = [
 ]
 eval = [
     "pytorch-fid",
+    "drawsvg~=2.0",
+    "cairosvg>=2.6",
 ]
 
 [build-system]
