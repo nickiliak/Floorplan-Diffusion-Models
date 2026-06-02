@@ -27,22 +27,29 @@ ROOM_COLORS: dict[int, str] = {
 # Used for matplotlib previews so generated samples match the look of
 # notebooks/01_resplan_exploration.ipynb (resplan_utils.plot_plan).
 CATEGORY_COLORS: dict[str, str] = {
-    "living": "#d9d9d9",     # light gray
-    "bedroom": "#66c2a5",    # greenish
-    "bathroom": "#fc8d62",   # orange
-    "kitchen": "#8da0cb",    # blue
-    "door": "#e78ac3",       # pink
-    "window": "#a6d854",     # lime
-    "wall": "#ffd92f",       # yellow
-    "front_door": "#a63603", # dark reddish-brown
-    "balcony": "#b3b3b3",    # dark gray
+    "living": "#d9d9d9",  # light gray
+    "bedroom": "#66c2a5",  # greenish
+    "bathroom": "#fc8d62",  # orange
+    "kitchen": "#8da0cb",  # blue
+    "door": "#e78ac3",  # pink
+    "window": "#a6d854",  # lime
+    "wall": "#ffd92f",  # yellow
+    "front_door": "#a63603",  # dark reddish-brown
+    "balcony": "#b3b3b3",  # dark gray
 }
 
 # Draw order (earlier = behind), matching plot_plan's category list so doors
 # and balconies layer on top of rooms.
 CATEGORY_ORDER: tuple[str, ...] = (
-    "living", "bedroom", "bathroom", "kitchen",
-    "door", "window", "wall", "front_door", "balcony",
+    "living",
+    "bedroom",
+    "bathroom",
+    "kitchen",
+    "door",
+    "window",
+    "wall",
+    "front_door",
+    "balcony",
 )
 
 
