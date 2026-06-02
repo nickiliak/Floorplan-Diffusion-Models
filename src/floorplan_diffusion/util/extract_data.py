@@ -1,5 +1,6 @@
-import zipfile
 import os
+import zipfile
+
 
 def extract_resplan():
     # Configuration
@@ -13,7 +14,7 @@ def extract_resplan():
         print(f"Created directory: {output_dir}")
 
     try:
-        with zipfile.ZipFile(zip_filename, 'r') as zip_ref:
+        with zipfile.ZipFile(zip_filename, "r") as zip_ref:
             # Check if the file exists within the zip
             if target_file in zip_ref.namelist():
                 # Extract only the specific file
@@ -21,11 +22,12 @@ def extract_resplan():
                 print(f"Successfully extracted '{target_file}' to '{output_dir}'.")
             else:
                 print(f"Error: '{target_file}' not found in {zip_filename}.")
-                
+
     except FileNotFoundError:
         print(f"Error: The file '{zip_filename}' was not found in the current directory.")
     except zipfile.BadZipFile:
         print(f"Error: '{zip_filename}' does not appear to be a valid zip file.")
+
 
 if __name__ == "__main__":
     extract_resplan()

@@ -21,7 +21,7 @@ training:
   save_interval: 10000
   log_interval: 100
   lr_decay_steps: 100000
-  check_val_every_n_epoch: 40
+  val_check_interval: 10000
 
 data:
   pickle_path: data/raw/ResPlan.pkl

@@ -55,11 +55,9 @@ class FloorplanDiffusionModule(pl.LightningModule):
         self.analog_bit = analog_bit
 
         self.sampler = UniformSampler(diffusion)
-        
+
         # EMA parameters — a deep copy of model params stored as buffers.
-        self._ema_params: list[torch.Tensor] = [
-            p.clone().detach() for p in self.model.parameters()
-        ]
+        self._ema_params: list[torch.Tensor] = [p.clone().detach() for p in self.model.parameters()]
 
         self.save_hyperparameters(ignore=["model", "diffusion"])
 
@@ -67,7 +65,7 @@ class FloorplanDiffusionModule(pl.LightningModule):
     def on_train_start(self) -> None:
         """Called by Lightning when training begins (after moving to GPU)."""
         self._ema_params = [p.to(self.device) for p in self._ema_params]
-        
+
     # ------------------------------------------------------------------
     # Training
     # ------------------------------------------------------------------
@@ -128,7 +126,9 @@ class FloorplanDiffusionModule(pl.LightningModule):
     def configure_optimizers(self) -> dict[str, Any]:
         """AdamW optimizer with linear warmup and step-decay LR scheduling."""
         optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=self.lr, weight_decay=self.weight_decay,
+            self.model.parameters(),
+            lr=self.lr,
+            weight_decay=self.weight_decay,
         )
 
         if self.lr_decay_steps <= 0 and self.warmup_steps <= 0:
