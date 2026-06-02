@@ -16,9 +16,16 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from matplotlib.patches import PathPatch
+from matplotlib.path import Path as MplPath
 
 from floorplan_diffusion.data.dataset import ROOM_TYPE_TO_INT, ResPlanDataset
-from floorplan_diffusion.evaluation.render import ROOM_COLORS, points_to_room_polygons
+from floorplan_diffusion.evaluation.render import (
+    CATEGORY_COLORS,
+    CATEGORY_ORDER,
+    derive_walls,
+    points_to_room_polygons,
+)
 from floorplan_diffusion.models.sampling import create_model_and_diffusion, generate_samples
 from floorplan_diffusion.training.lightning_module import FloorplanDiffusionModule
 
@@ -32,17 +39,57 @@ INT_TO_ROOM_NAME: dict[int, str] = {v: k for k, v in ROOM_TYPE_TO_INT.items()}
 # ---------------------------------------------------------------------------
 
 
+DOOR_INTS: frozenset[int] = frozenset({ROOM_TYPE_TO_INT["door"], ROOM_TYPE_TO_INT["front_door"]})
+
+
+def _shapely_to_pathpatch(geom, **kwargs) -> PathPatch | None:
+    """Convert a Shapely (Multi)Polygon (with holes) to a matplotlib patch.
+
+    Interior rings become holes via the path's even-odd/winding fill, so a
+    wall lattice keeps each room's interior empty.
+    """
+    from shapely.geometry import Polygon as _Polygon
+
+    polys = list(geom.geoms) if hasattr(geom, "geoms") else [geom]
+    vertices: list[np.ndarray] = []
+    codes: list[int] = []
+    for poly in polys:
+        if not isinstance(poly, _Polygon) or poly.is_empty:
+            continue
+        for ring in (poly.exterior, *poly.interiors):
+            ring_coords = np.asarray(ring.coords)
+            if len(ring_coords) < 3:
+                continue
+            vertices.append(ring_coords)
+            codes.append(MplPath.MOVETO)
+            codes.extend([MplPath.LINETO] * (len(ring_coords) - 1))
+    if not vertices:
+        return None
+    return PathPatch(MplPath(np.concatenate(vertices), codes), **kwargs)
+
+
 def render_floorplan(
     room_polygons: list[tuple[np.ndarray, int]],
     title: str = "",
     ax: plt.Axes | None = None,
+    draw_walls: bool = True,
+    wall_thickness: float = 0.025,
 ) -> plt.Axes:
-    """Render room polygons on a matplotlib axes.
+    """Render room polygons in the ResPlan notebook style.
+
+    Matches ``resplan_utils.plot_plan`` (see
+    ``notebooks/01_resplan_exploration.ipynb``): solid ``CATEGORY_COLORS`` fills,
+    thin black edges, equal aspect, no axis or corner markers. When
+    *draw_walls* is set, a yellow wall lattice synthesized from the room
+    boundaries (:func:`derive_walls`) is overlaid between the room fills and the
+    doors — derived identically for ground-truth and generated polygons.
 
     Args:
         room_polygons: Output of :func:`points_to_room_polygons`.
         title: Optional title for the plot.
         ax: Optional axes to draw on.
+        draw_walls: Overlay the synthesized wall lattice.
+        wall_thickness: Wall width in normalized [-1, 1] units.
 
     Returns:
         The matplotlib axes with the rendered floorplan.
@@ -50,26 +97,54 @@ def render_floorplan(
     if ax is None:
         _, ax = plt.subplots(1, 1, figsize=(6, 6))
 
-    for coords, rtype in room_polygons:
-        color = ROOM_COLORS.get(rtype, "#888888")
-        label = INT_TO_ROOM_NAME.get(rtype, f"type_{rtype}")
-        if len(coords) >= 3:
-            poly = plt.Polygon(
+    # Layer back-to-front like plot_plan so doors/balconies sit on top of rooms.
+    order = {name: i for i, name in enumerate(CATEGORY_ORDER)}
+    ordered = sorted(
+        room_polygons,
+        key=lambda r: order.get(INT_TO_ROOM_NAME.get(r[1], ""), len(order)),
+    )
+
+    def _draw(coords: np.ndarray, rtype: int) -> None:
+        name = INT_TO_ROOM_NAME.get(rtype, f"type_{rtype}")
+        color = CATEGORY_COLORS.get(name, "#000000")
+        ax.add_patch(
+            plt.Polygon(
                 coords,
                 closed=True,
                 facecolor=color,
                 edgecolor="black",
-                linewidth=1.0,
-                alpha=0.7,
-                label=label,
+                linewidth=0.5,
+                label=name.replace("_", " "),
             )
-            ax.add_patch(poly)
-        # Draw corner markers.
-        ax.scatter(coords[:, 0], coords[:, 1], s=10, c="black", zorder=5)
+        )
+
+    # 1. Room fills (doors deferred so they sit on top of the walls).
+    for coords, rtype in ordered:
+        if len(coords) >= 3 and rtype not in DOOR_INTS:
+            _draw(coords, rtype)
+
+    # 2. Synthesized walls, derived from the same polygons for GT and generated.
+    if draw_walls:
+        walls = derive_walls(room_polygons, wall_thickness=wall_thickness)
+        if walls is not None:
+            patch = _shapely_to_pathpatch(
+                walls,
+                facecolor=CATEGORY_COLORS["wall"],
+                edgecolor="black",
+                linewidth=0.3,
+                label="wall",
+            )
+            if patch is not None:
+                ax.add_patch(patch)
+
+    # 3. Doors on top of the walls (so openings stay visible).
+    for coords, rtype in ordered:
+        if len(coords) >= 3 and rtype in DOOR_INTS:
+            _draw(coords, rtype)
 
     ax.set_xlim(-1.1, 1.1)
     ax.set_ylim(-1.1, 1.1)
-    ax.set_aspect("equal")
+    ax.set_aspect("equal", adjustable="box")
     ax.invert_yaxis()
     ax.set_title(title)
     ax.set_axis_off()
@@ -185,6 +260,18 @@ def main() -> None:
         default=False,
         help="Use analog mode (default: binary)",
     )
+    parser.add_argument(
+        "--no_walls",
+        action="store_true",
+        default=False,
+        help="Disable the synthesized wall lattice overlay",
+    )
+    parser.add_argument(
+        "--wall_thickness",
+        type=float,
+        default=0.025,
+        help="Wall width in normalized [-1, 1] units (default: 0.025)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -292,8 +379,20 @@ def main() -> None:
 
             # Render side-by-side: ground truth vs generated.
             fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-            render_floorplan(gt_polys, title="Ground Truth", ax=axes[0])
-            render_floorplan(gen_polys, title=f"Generated (adj={accuracy:.2f})", ax=axes[1])
+            render_floorplan(
+                gt_polys,
+                title="Ground Truth",
+                ax=axes[0],
+                draw_walls=not args.no_walls,
+                wall_thickness=args.wall_thickness,
+            )
+            render_floorplan(
+                gen_polys,
+                title=f"Generated (adj={accuracy:.2f})",
+                ax=axes[1],
+                draw_walls=not args.no_walls,
+                wall_thickness=args.wall_thickness,
+            )
 
             # De-duplicate legend labels.
             handles, labels = axes[1].get_legend_handles_labels()
