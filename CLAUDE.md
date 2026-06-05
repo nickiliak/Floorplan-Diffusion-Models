@@ -57,3 +57,7 @@ Reference: `external/house_diffusion/house_diffusion/rplanhg_datasets.py`
 - Large files (data, checkpoints) are gitignored — never commit them
 - Config changes for experiments go in `configs/` as new YAML files
 - Use `uv run` to execute Python scripts (ensures correct environment)
+
+## Git / Commits
+- Do NOT add Claude attribution to commits or PRs. No `Co-Authored-By: Claude`
+  trailer and no "Generated with Claude Code" lines in commit messages or PR bodies.
