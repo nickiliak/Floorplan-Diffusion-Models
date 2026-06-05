@@ -136,11 +136,11 @@ def run_benchmark(
                 cond_batch,
                 device=torch_device,
             )
-            generated_np = generated.cpu().numpy()  # [batch, 2, 100]
+            generated_np = generated.cpu().numpy()  # [batch, 2, MAX_NUM_POINTS]
 
             for b in range(len(batch_indices)):
-                gen_points = generated_np[b].T  # [100, 2]
-                gt_points = batch_items[b][0].T  # [100, 2]
+                gen_points = generated_np[b].T  # [MAX_NUM_POINTS, 2]
+                gt_points = batch_items[b][0].T  # [MAX_NUM_POINTS, 2]
                 cond = batch_items[b][1]
 
                 room_types = cond["room_types"]

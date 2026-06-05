@@ -21,7 +21,7 @@ echo "--------------------------------------------------"
 
 # Environment Setup
 export PATH="$HOME/.local/bin:$PATH"
-cd ~/Floorplan-Diffusion-Models-BH || { echo "Project directory not found"; exit 1; }
+cd ~/Floorplan-Diffusion-Models || { echo "Project directory not found"; exit 1; }
 
 # Module Loading & Verification
 module load cuda/12.1

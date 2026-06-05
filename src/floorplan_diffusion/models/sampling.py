@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import torch
 
+from floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, MAX_NUM_POINTS, ROOM_IDX_DIMS
 from floorplan_diffusion.models.gaussian_diffusion import (
     LossType,
     ModelMeanType,
@@ -40,7 +41,9 @@ def create_model_and_diffusion(
 
     model = TransformerModel(
         in_channels=in_channels,
-        condition_channels=89,
+        # room_type(25) + corner_idx(CORNER_IDX_DIMS) + room_idx(ROOM_IDX_DIMS);
+        # must match the dataset feature layout (see ResPlanDataset.__getitem__).
+        condition_channels=25 + CORNER_IDX_DIMS + ROOM_IDX_DIMS,
         model_channels=num_channels,
         out_channels=num_coords,
         dataset="rplan",
@@ -79,11 +82,11 @@ def generate_samples(
         device: Torch device.
 
     Returns:
-        Generated samples, shape ``[batch, 2, 100]``.
+        Generated samples, shape ``[batch, 2, MAX_NUM_POINTS]``.
     """
     model.eval()
     batch_size = cond_batch["room_types"].shape[0]
-    shape = (batch_size, 2, 100)
+    shape = (batch_size, 2, MAX_NUM_POINTS)
 
     # Move conditioning to device.
     model_kwargs = {f"syn_{k}": v.float().to(device) for k, v in cond_batch.items()}
@@ -96,6 +99,6 @@ def generate_samples(
         analog_bit=analog_bit,
         device=device,
     )
-    # p_sample_loop returns [num_final_steps, batch, 2, 100].
+    # p_sample_loop returns [num_final_steps, batch, 2, MAX_NUM_POINTS].
     # Take the last timestep as the final sample.
     return sample_stack[-1]

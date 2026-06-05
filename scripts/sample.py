@@ -19,7 +19,7 @@ import torch
 from matplotlib.patches import PathPatch
 from matplotlib.path import Path as MplPath
 
-from floorplan_diffusion.data.dataset import ROOM_TYPE_TO_INT, ResPlanDataset
+from floorplan_diffusion.data.dataset import MAX_NUM_POINTS, ROOM_TYPE_TO_INT, ResPlanDataset
 from floorplan_diffusion.evaluation.render import (
     CATEGORY_COLORS,
     CATEGORY_ORDER,
@@ -197,12 +197,12 @@ def compute_graph_accuracy_from_points(
             # Pick a representative point from each room.
             pa = next(
                 i
-                for i in range(100)
+                for i in range(MAX_NUM_POINTS)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == ra
             )
             pb = next(
                 i
-                for i in range(100)
+                for i in range(MAX_NUM_POINTS)
                 if padding_mask[i] < 0.5 and int(np.argmax(room_indices[i])) == rb
             )
             if door_mask[pa, pb] < 0.5:
@@ -279,7 +279,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    output_dir = Path(args.output_dir)
+    ckpt_stem = Path(args.checkpoint).stem
+    output_dir = Path(args.output_dir) / ckpt_stem
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve device.
