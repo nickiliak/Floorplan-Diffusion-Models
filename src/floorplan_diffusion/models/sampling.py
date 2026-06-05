@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import torch
 
-from floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, MAX_NUM_POINTS
+from floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, MAX_NUM_POINTS, ROOM_IDX_DIMS
 from floorplan_diffusion.models.gaussian_diffusion import (
     LossType,
     ModelMeanType,
@@ -41,9 +41,9 @@ def create_model_and_diffusion(
 
     model = TransformerModel(
         in_channels=in_channels,
-        # room_type(25) + corner_idx(CORNER_IDX_DIMS) + room_idx(32); must match
-        # the dataset feature layout (see ResPlanDataset.__getitem__).
-        condition_channels=25 + CORNER_IDX_DIMS + 32,
+        # room_type(25) + corner_idx(CORNER_IDX_DIMS) + room_idx(ROOM_IDX_DIMS);
+        # must match the dataset feature layout (see ResPlanDataset.__getitem__).
+        condition_channels=25 + CORNER_IDX_DIMS + ROOM_IDX_DIMS,
         model_channels=num_channels,
         out_channels=num_coords,
         dataset="rplan",

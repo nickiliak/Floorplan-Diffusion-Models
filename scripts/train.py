@@ -19,6 +19,7 @@ import yaml
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
 
+from src.floorplan_diffusion.data.dataset import CORNER_IDX_DIMS, ROOM_IDX_DIMS
 from src.floorplan_diffusion.models.gaussian_diffusion import (
     LossType,
     ModelMeanType,
@@ -29,7 +30,6 @@ from src.floorplan_diffusion.models.respace import SpacedDiffusion, space_timest
 from src.floorplan_diffusion.models.transformer import TransformerModel
 from src.floorplan_diffusion.training.data_module import ResPlanDataModule
 from src.floorplan_diffusion.training.lightning_module import FloorplanDiffusionModule
-from src.floorplan_diffusion.data.dataset import CORNER_IDX_DIMS
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def create_model(cfg: dict) -> TransformerModel:
     analog_bit = cfg["data"]["analog_bit"]
     num_coords = 16 if analog_bit else 2
     in_channels = num_coords + (2 * 8 if not analog_bit else 0)
-    condition_channels = 25 + CORNER_IDX_DIMS + 32  # room_type + corner_idx + room_idx
+    condition_channels = 25 + CORNER_IDX_DIMS + ROOM_IDX_DIMS  # room_type + corner_idx + room_idx
     out_channels = num_coords
 
     return TransformerModel(
