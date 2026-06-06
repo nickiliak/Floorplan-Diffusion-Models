@@ -200,7 +200,12 @@ def main() -> None:
     # --- Trainer ---
     trainer = pl.Trainer(
         max_steps=train_cfg["max_steps"],
+        # Interpret val_check_interval as a global step count rather than a
+        # within-epoch batch count. The dataset is small (tens of batches per
+        # epoch over a 250k-step run), so an int interval larger than one epoch
+        # would otherwise raise; None lets validation run every N total steps.
         val_check_interval=train_cfg["val_check_interval"],
+        check_val_every_n_epoch=None,
         callbacks=callbacks,
         logger=csv_logger,
         log_every_n_steps=train_cfg["log_interval"],
