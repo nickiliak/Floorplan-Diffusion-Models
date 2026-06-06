@@ -4,8 +4,8 @@
 #BSUB -J sample_house_diffusion_res
 #BSUB -n 4
 #BSUB -R "span[hosts=1]"
-#BSUB -R "rusage[mem=8GB]"
-#BSUB -M 8GB
+#BSUB -R "rusage[mem=16GB]"
+#BSUB -M 16GB
 #BSUB -gpu "num=1:mode=exclusive_process"
 #BSUB -W 00:30
 #BSUB -B
@@ -21,7 +21,7 @@ echo "--------------------------------------------------"
 
 # Environment Setup
 export PATH="$HOME/.local/bin:$PATH"
-cd ~/Floorplan-Diffusion-Models || { echo "Project directory not found"; exit 1; }
+cd "$LS_SUBCWD" || { echo "Project directory not found (submit from the repo root)"; exit 1; }
 
 # Module Loading & Verification
 module load cuda/12.1
