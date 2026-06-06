@@ -51,7 +51,7 @@ DEFAULT_MAX_NUM_POINTS = 175
 NUM_ROOM_TYPE_CLASSES = 25   # columns 2–26 in the [N, 94] tensor
 MAX_CORNER_INDEX = 64        # columns 27–58
 MAX_ROOM_INDEX = 32          # columns 59–90
-ROW_WIDTH = 2 + NUM_ROOM_TYPE_CLASSES + MAX_CORNER_INDEX + MAX_ROOM_INDEX + 1 + 2
+
 # Room types present in ResPlan and their mapping to integer IDs.
 #
 # Strategy: reuse rplan IDs for the 5 core overlapping types.
@@ -370,13 +370,13 @@ def build_house_tensor(
         max_num_points: Max corner rows in output tensor.
 
     Returns:
-        (house_tensor, corner_bounds) where house_tensor is [max_num_points, ROW_WIDTH]
+        (house_tensor, corner_bounds) where house_tensor is [max_num_points, 94]
         float32 and corner_bounds is [[start, end], ...] per room.
     """
     room_vertices = [extract_vertices_from_polygon(poly) for poly, _, _ in rooms]
     non_empty = [v for v in room_vertices if len(v) > 0]
     if not non_empty:
-        return np.zeros((max_num_points, ROW_WIDTH), dtype=np.float32), []
+        return np.zeros((max_num_points, 94), dtype=np.float32), []
 
     # Global bounding-box normalization to [-1, 1]
     all_verts = np.concatenate(non_empty, axis=0)
@@ -432,7 +432,7 @@ def build_house_tensor(
         house_parts.append(row)
 
     if not house_parts:
-        return np.zeros((max_num_points, ROW_WIDTH), dtype=np.float32), []
+        return np.zeros((max_num_points, 94), dtype=np.float32), []
 
     house_layouts = np.concatenate(house_parts, axis=0)
 
@@ -442,7 +442,7 @@ def build_house_tensor(
         if corner_bounds and corner_bounds[-1][1] > max_num_points:
             corner_bounds[-1][1] = max_num_points
 
-    padding = np.zeros((max_num_points - len(house_layouts), ROW_WIDTH), dtype=np.float32)
+    padding = np.zeros((max_num_points - len(house_layouts), 94), dtype=np.float32)
     house_layouts = np.concatenate((house_layouts, padding), axis=0)
 
     return house_layouts.astype(np.float32), corner_bounds
@@ -579,7 +579,7 @@ class ResplanDataset(Dataset):
             logger.info("Loading cached dataset from %s", cache_file)
             data = np.load(cache_file, allow_pickle=True)
             self.houses = list(data["houses"])
-            self.graphs = [g.astype(np.float32) for g in data["graphs"]]
+            self.graphs = list(data["graphs"])
             self.door_masks = list(data["door_masks"])
             self.self_masks = list(data["self_masks"])
             self.gen_masks = list(data["gen_masks"])
@@ -662,20 +662,15 @@ class ResplanDataset(Dataset):
         else:
             graph = graph[:200]
 
-        _ci = self.num_coords + NUM_ROOM_TYPE_CLASSES
-        _ri = _ci + MAX_CORNER_INDEX
-        _pm = _ri + MAX_ROOM_INDEX
-        _cn = _pm + 1
-
         cond = {
             "door_mask": self.door_masks[idx],
             "self_mask": self.self_masks[idx],
             "gen_mask": self.gen_masks[idx],
-            "room_types": house[:, self.num_coords : _ci],
-            "corner_indices": house[:, _ci : _ri],
-            "room_indices": house[:, _ri : _pm],
-            "src_key_padding_mask": 1 - house[:, _pm],
-            "connections": house[:, _cn : _cn + 2],
+            "room_types": house[:, self.num_coords : self.num_coords + 25],
+            "corner_indices": house[:, self.num_coords + 25 : self.num_coords + 57],
+            "room_indices": house[:, self.num_coords + 57 : self.num_coords + 89],
+            "src_key_padding_mask": 1 - house[:, self.num_coords + 89],
+            "connections": house[:, self.num_coords + 90 : self.num_coords + 92],
             "graph": graph,
         }
 
