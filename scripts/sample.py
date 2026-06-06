@@ -165,10 +165,10 @@ def compute_graph_accuracy_from_points(
     points is below *adjacency_threshold* (in normalised [-1, 1] space).
 
     Args:
-        points: ``[100, 2]`` generated coordinates.
-        door_mask: ``[100, 100]`` attention mask (0 = connected).
-        room_indices: ``[100, 32]`` one-hot room index per point.
-        padding_mask: ``[100]`` — 0 for real, 1 for padding.
+        points: ``[MAX_NUM_POINTS, 2]`` generated coordinates.
+        door_mask: ``[MAX_NUM_POINTS, MAX_NUM_POINTS]`` attention mask (0 = connected).
+        room_indices: ``[MAX_NUM_POINTS, ROOM_IDX_DIMS]`` one-hot room index per point.
+        padding_mask: ``[MAX_NUM_POINTS]`` — 0 for real, 1 for padding.
         adjacency_threshold: Max distance to consider rooms adjacent.
 
     Returns:
@@ -341,13 +341,13 @@ def main() -> None:
             analog_bit=args.analog_bit,
             device=device,
         )
-        generated_np = generated.cpu().numpy()  # [batch, 2, 100]
+        generated_np = generated.cpu().numpy()  # [batch, 2, MAX_NUM_POINTS]
 
         # --- Render and evaluate each sample ---
         for b in range(len(batch_indices)):
             idx = batch_indices[b]
-            gen_points = generated_np[b].T  # [100, 2]
-            gt_points = batch_items[b][0].T  # [100, 2]
+            gen_points = generated_np[b].T  # [MAX_NUM_POINTS, 2]
+            gt_points = batch_items[b][0].T  # [MAX_NUM_POINTS, 2]
             cond = batch_items[b][1]
 
             room_types = cond["room_types"]

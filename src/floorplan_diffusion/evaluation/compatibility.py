@@ -52,7 +52,7 @@ def _build_gt_graph(
 
     Args:
         room_types: ``[N, 25]`` one-hot room types.
-        room_indices: ``[N, 32]`` one-hot room indices.
+        room_indices: ``[N, ROOM_IDX_DIMS]`` one-hot room indices.
         padding_mask: ``[N]`` — 0 for real, 1 for padding.
         door_mask: ``[N, N]`` attention mask (0 = connected by door).
 
@@ -198,7 +198,7 @@ def estimate_graph_errors(
     Args:
         room_polygons: Generated room polygons (output of points_to_room_polygons).
         room_types: ``[N, 25]`` one-hot room types (ground truth).
-        room_indices: ``[N, 32]`` one-hot room indices (ground truth).
+        room_indices: ``[N, ROOM_IDX_DIMS]`` one-hot room indices (ground truth).
         padding_mask: ``[N]`` padding mask (ground truth).
         door_mask: ``[N, N]`` attention mask (ground truth).
 

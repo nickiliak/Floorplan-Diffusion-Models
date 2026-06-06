@@ -53,8 +53,11 @@ ROOM_TYPE_TO_INT: dict[str, int] = {
 }
 """Mapping from ResPlan room-type strings to the RPLAN integer encoding."""
 
-MAX_NUM_POINTS: int = 128
-"""Maximum number of polygon vertices per plan (padding target)."""
+MAX_NUM_POINTS: int = 192
+"""Maximum number of polygon vertices per plan (padding target).
+
+Raised from 128 to 192 to retain ~93% of ResPlan plans (vs ~57% at 128); the
+total-vertex cap was the sole filter dropping plans. See docs/model_format.md."""
 
 MAX_CORNERS_PER_ROOM: int = 64  # configurable per-room corner limit
 """Target maximum corners per room after simplification."""
@@ -62,10 +65,11 @@ MAX_CORNERS_PER_ROOM: int = 64  # configurable per-room corner limit
 CORNER_IDX_DIMS: int = MAX_CORNERS_PER_ROOM
 """Dimensionality of the corner-index one-hot — must be >= MAX_CORNERS_PER_ROOM."""
 
-ROOM_IDX_DIMS: int = 32
+ROOM_IDX_DIMS: int = 64
 """Dimensionality of the room-index one-hot. It is assigned 1-indexed (first
 part -> 1), so a plan may contain at most ``ROOM_IDX_DIMS - 1`` polygon parts
-(rooms + doors)."""
+(rooms + doors). Raised from 32 to 64 alongside MAX_NUM_POINTS so the part-count
+ceiling no longer rejects plans that fit the vertex budget."""
 
 NUM_COLUMNS: int = 2 + 25 + CORNER_IDX_DIMS + ROOM_IDX_DIMS + 1 + 2
 """Width of the per-point feature vector:
@@ -200,7 +204,7 @@ class ResPlanDataset(Dataset):
     def __getitem__(self, idx: int) -> tuple[NDArray[np.float64], dict[str, Any]]:
         """Return ``(arr, cond)`` for a single floorplan.
 
-        ``arr`` has shape ``[2, 100]`` (x/y coordinates, transposed).
+        ``arr`` has shape ``[2, MAX_NUM_POINTS]`` (x/y coordinates, transposed).
         ``cond`` is a dict of attention masks, room types, corner/room indices,
         padding mask, and polygon-traversal connections — all as NumPy arrays.
         """
@@ -292,7 +296,7 @@ class ResPlanDataset(Dataset):
         ]
         | None
     ):
-        """Convert a single ResPlan dict into the 94-column array and masks.
+        """Convert a single ResPlan dict into the ``NUM_COLUMNS``-wide array and masks.
 
         Returns:
             A tuple ``(house_array, door_mask, self_mask, gen_mask)`` or ``None``

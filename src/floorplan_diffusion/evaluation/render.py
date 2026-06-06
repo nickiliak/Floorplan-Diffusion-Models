@@ -64,7 +64,7 @@ def points_to_room_polygons(
     Args:
         points: ``[N, 2]`` array of (x, y) coordinates in [-1, 1].
         room_types: ``[N, 25]`` one-hot room type per point.
-        room_indices: ``[N, 32]`` one-hot room index per point.
+        room_indices: ``[N, ROOM_IDX_DIMS]`` one-hot room index per point.
         padding_mask: ``[N]`` — 0 for real, 1 for padding.
 
     Returns:

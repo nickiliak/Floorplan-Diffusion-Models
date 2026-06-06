@@ -8,6 +8,8 @@ import numpy as np
 import pytest
 from shapely.geometry import Polygon
 
+from floorplan_diffusion.data.dataset import ROOM_IDX_DIMS
+
 
 def _can_import(module: str) -> bool:
     """Check whether a module can be imported."""
@@ -61,7 +63,7 @@ class TestPointsToRoomPolygons:
         room_types[4, 2] = 1
         room_types[5, 2] = 1
 
-        room_indices = np.zeros((n, 32))
+        room_indices = np.zeros((n, ROOM_IDX_DIMS))
         room_indices[0, 0] = 1
         room_indices[1, 0] = 1
         room_indices[2, 0] = 1
@@ -84,7 +86,7 @@ class TestPointsToRoomPolygons:
         room_types = np.zeros((n, 25))
         room_types[:3, 1] = 1
         room_types[3, 2] = 1
-        room_indices = np.zeros((n, 32))
+        room_indices = np.zeros((n, ROOM_IDX_DIMS))
         room_indices[:3, 0] = 1
         room_indices[3, 1] = 1
         padding_mask = np.array([0, 0, 0, 1])  # last point is padding
@@ -207,7 +209,7 @@ class TestBuildGtGraph:
             ``(room_types, room_indices, padding_mask, door_mask)`` arrays.
         """
         room_types = np.zeros((n_points, 25))
-        room_indices = np.zeros((n_points, 32))
+        room_indices = np.zeros((n_points, ROOM_IDX_DIMS))
         padding_mask = np.ones(n_points)  # default: padding
         door_mask = np.ones((n_points, n_points))  # default: not connected
 
@@ -297,7 +299,7 @@ class TestEstimateGraphErrors:
         # Two rooms with an interior door between them — GT and polygons match.
         n = 10
         room_types = np.zeros((n, 25))
-        room_indices = np.zeros((n, 32))
+        room_indices = np.zeros((n, ROOM_IDX_DIMS))
         padding_mask = np.ones(n)
         door_mask = np.ones((n, n))
 
@@ -343,7 +345,7 @@ class TestEstimateGraphErrors:
 
         n = 6
         room_types = np.zeros((n, 25))
-        room_indices = np.zeros((n, 32))
+        room_indices = np.zeros((n, ROOM_IDX_DIMS))
         padding_mask = np.ones(n)
         door_mask = np.ones((n, n))
 

@@ -44,7 +44,11 @@ the model denoises a cloud of random points into a valid, structured floor plan.
   └──────────────────────────────────────────────────────────────┘
 ```
 
-**Key numbers to keep in mind:**
+> **Note:** the numbers below describe the *original* HouseDiffusion / RPLAN setup. Our ResPlan
+> port uses a wider format (192 points, 158 columns, 153 conditioning channels) — see
+> [`docs/model_format.md`](../model_format.md) for the as-built dimensions and the rationale.
+
+**Key numbers to keep in mind (original HouseDiffusion / RPLAN):**
 - Max points per floorplan: **100**
 - Channels per point: **2** (continuous) or **16** (discrete/analog_bit)
 - Conditioning channels per point: **89** (25 room-type + 32 corner-index + 32 room-index)
