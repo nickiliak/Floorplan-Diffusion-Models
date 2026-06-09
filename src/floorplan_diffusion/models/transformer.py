@@ -233,6 +233,7 @@ class TransformerModel(nn.Module):
         use_checkpoint: bool,
         use_unet: bool,
         analog_bit: bool,
+        training = False,
     ) -> None:
         super().__init__()
         self.in_channels = in_channels
@@ -244,6 +245,7 @@ class TransformerModel(nn.Module):
         self.analog_bit = analog_bit
         self.use_unet = use_unet
         self.num_layers = 4
+        self.training = training
 
         self.activation = nn.ReLU()
 
@@ -254,6 +256,11 @@ class TransformerModel(nn.Module):
         )
         self.input_emb = nn.Linear(self.in_channels, self.model_channels)
         self.condition_emb = nn.Linear(self.condition_channels, self.model_channels)
+        self.guidance_emb = nn.Sequential(
+            nn.Linear(1, self.model_channels),
+            nn.SiLU(),
+            nn.Linear(self.model_channels, self.model_channels),
+        )
 
         if use_unet:
             # NOTE: UNet class is not implemented in this port. The branch is
@@ -407,6 +414,7 @@ class TransformerModel(nn.Module):
             epsalpha: Noise scaling factor for binary branch.
             is_syn: If ``True``, use ``syn_``-prefixed keys in *kwargs*.
             **kwargs: Additional tensors (masks, conditions, connections, etc.).
+            guidance_scale: Scale for guidance.
 
         Returns:
             A tuple ``(out_dec, out_bin)`` where *out_bin* is ``None`` when
@@ -435,8 +443,19 @@ class TransformerModel(nn.Module):
                     cond = th.cat((cond, kwargs[key]), 2)
             cond_emb = self.condition_emb(cond.float())
 
+            #guidance embedding for area
+            #drop with probability 0.1
+            guidance_emb = self.guidance_emb(kwargs[f"{prefix}area"].unsqueeze(-1))
+            if self.training:
+                if th.rand(1).item() < 0.1:
+                    guidance_emb = th.zeros_like(guidance_emb)
+                    print("Dropping guidance embedding for area")
+            else:
+                guidance_emb *= 1.0 #Change this to whatever to steer guidance
+    
+
         # PositionalEncoding and DM model
-        out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1))
+        out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1)) + guidance_emb.repeat((1, input_emb.shape[1], 1))
         for layer in self.transformer_layers:
             out = layer(
                 out,

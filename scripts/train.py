@@ -101,6 +101,7 @@ def create_model(cfg: dict) -> TransformerModel:
         use_checkpoint=False,
         use_unet=False,
         analog_bit=analog_bit,
+        training=True
     )
 
 

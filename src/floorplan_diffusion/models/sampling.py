@@ -50,6 +50,7 @@ def create_model_and_diffusion(
         use_checkpoint=False,
         use_unet=False,
         analog_bit=analog_bit,
+        training=False
     )
 
     betas = get_named_beta_schedule(noise_schedule, diffusion_steps)
