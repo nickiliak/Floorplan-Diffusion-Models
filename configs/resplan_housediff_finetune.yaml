@@ -1,0 +1,38 @@
+# Phase 2 — finetune on the full ResPlan dataset after simple-plan warmup.
+# Lower lr (1e-4) and short re-warmup to adapt without destabilising the
+# weights learned in phase 1. Resume from models/checkpoints/simple/last.ckpt.
+
+model:
+  num_channels: 512
+  num_heads: 4
+  num_res_blocks: 3
+  dropout: 0.1
+
+diffusion:
+  steps: 1000
+  noise_schedule: cosine
+
+training:
+  batch_size: 128
+  lr: 1.0e-4
+  weight_decay: 0.05
+  warmup_steps: 500
+  ema_rate: 0.9999
+  max_steps: 150000
+  save_interval: 25000
+  log_interval: 10
+  lr_decay_steps: 75000
+  val_check_interval: 100
+  checkpoint_dir: models/checkpoints/curriculum/finetune
+
+data:
+  pickle_path: data/raw/ResPlan.pkl
+  cache_dir: data/processed
+  analog_bit: false
+  fp16: false
+  num_workers: 3
+  val_fraction: 0.1
+
+wandb:
+  project: floorplan-diffusion
+  entity: null

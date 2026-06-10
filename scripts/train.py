@@ -138,7 +138,13 @@ def main() -> None:
         "--resume",
         type=str,
         default=None,
-        help="Path to checkpoint to resume training from",
+        help="Path to checkpoint to resume training from (restores full trainer state)",
+    )
+    parser.add_argument(
+        "--weights_from",
+        type=str,
+        default=None,
+        help="Path to checkpoint to load model weights from (resets optimizer/step — use for finetuning)",
     )
     args, remaining = parser.parse_known_args()
 
@@ -181,10 +187,24 @@ def main() -> None:
         analog_bit=data_cfg["analog_bit"],
     )
 
+    if args.weights_from:
+        # Load only model + EMA weights; optimizer state and global step are NOT
+        # restored so finetuning starts fresh with the new lr/schedule.
+        src = FloorplanDiffusionModule.load_from_checkpoint(
+            args.weights_from,
+            model=create_model(cfg),
+            diffusion=create_diffusion(cfg),
+            map_location="cpu",
+        )
+        lit_module.model.load_state_dict(src.model.state_dict())
+        lit_module.ema_params = [p.clone() for p in src.ema_params]
+        logger.info("Loaded model weights (weights-only) from: %s", args.weights_from)
+
     # --- Callbacks ---
+    ckpt_dir = train_cfg.get("checkpoint_dir", "models/checkpoints")
     callbacks = [
         ModelCheckpoint(
-            dirpath="models/checkpoints",
+            dirpath=ckpt_dir,
             filename="floorplan-{step}-{val/loss:.4f}",
             monitor="val/loss",
             mode="min",

@@ -1,0 +1,38 @@
+# Phase 1 — curriculum training on the 3000 simplest ResPlan plans.
+# Same model/diffusion/hyperparams as stable_fp32; only the dataset and
+# checkpoint directory differ.
+
+model:
+  num_channels: 512
+  num_heads: 4
+  num_res_blocks: 3
+  dropout: 0.1
+
+diffusion:
+  steps: 1000
+  noise_schedule: cosine
+
+training:
+  batch_size: 128
+  lr: 3.0e-4
+  weight_decay: 0.05
+  warmup_steps: 2000
+  ema_rate: 0.9999
+  max_steps: 150000
+  save_interval: 25000
+  log_interval: 10
+  lr_decay_steps: 75000
+  val_check_interval: 100
+  checkpoint_dir: models/checkpoints/curriculum/simple
+
+data:
+  pickle_path: data/raw/ResPlan_simple.pkl
+  cache_dir: data/processed/simple
+  analog_bit: false
+  fp16: false
+  num_workers: 3
+  val_fraction: 0.1
+
+wandb:
+  project: floorplan-diffusion
+  entity: null
