@@ -450,12 +450,10 @@ class TransformerModel(nn.Module):
                 if th.rand(1).item() < 0.1:
                     guidance_emb = th.zeros_like(guidance_emb)
                     print("Dropping guidance embedding for area")
-            else:
-                guidance_emb *= 1.0 #Change this to whatever to steer guidance
     
 
         # PositionalEncoding and DM model
-        out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1)) + guidance_emb.repeat((1, input_emb.shape[1], 1))
+        out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1)) + guidance_emb.unsqueeze(1).repeat((1, input_emb.shape[1], 1))
         for layer in self.transformer_layers:
             out = layer(
                 out,

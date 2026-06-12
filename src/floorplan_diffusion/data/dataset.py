@@ -244,6 +244,7 @@ class ResPlanDataset(Dataset):
             "room_indices": h[:, ci_end:ri_end],
             "src_key_padding_mask": 1 - h[:, ri_end],
             "connections": h[:, ri_end + 1 :],
+            "area": 10
         }
         return arr.astype(float), cond
 
