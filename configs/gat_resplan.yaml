@@ -1,0 +1,27 @@
+# Config for HGT-based RoomGraphGAT training and evaluation
+# Encoder: Heterogeneous Graph Transformer (Hu et al., WWW 2020)
+# Decoders: one-shot + autoregressive, trained jointly
+
+model:
+  embed_dim: 64
+  hidden_dim: 64
+  num_layers: 3
+  num_heads: 4
+  mlp_hidden: 128
+  dropout: 0.1
+
+training:
+  pickle_path: data/raw/ResPlan.pkl
+  epochs: 250
+  lr: 3.0e-4
+  weight_decay: 1.0e-4
+  val_fraction: 0.1
+
+output:
+  model_dir: models/gat
+  output_dir: outputs/gat
+
+evaluation:
+  n_samples: 500       # graphs to generate for stats comparison
+  n_vis_samples: 12    # graphs to render as images
+  threshold: 0.5       # min softmax prob to assign non-zero edge class
