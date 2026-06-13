@@ -197,7 +197,7 @@ def main() -> None:
             map_location="cpu",
         )
         lit_module.model.load_state_dict(src.model.state_dict())
-        lit_module.ema_params = [p.clone() for p in src.ema_params]
+        lit_module._ema_params = [p.clone().detach().cpu() for p in src._ema_params]
         logger.info("Loaded model weights (weights-only) from: %s", args.weights_from)
 
     # --- Callbacks ---
