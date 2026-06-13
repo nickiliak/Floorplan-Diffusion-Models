@@ -2,11 +2,10 @@ version: '3'
 
 tasks:
   setup:
-    desc: Install dependencies, init submodules, install pre-commit hooks
+    desc: Install dependencies, init submodules
     cmds:
       - uv sync --all-extras
       - git submodule update --init --recursive
-      - uv run pre-commit install
 
   data:download:
     desc: Extract ResPlan.pkl into data/raw/

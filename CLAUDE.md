@@ -40,7 +40,7 @@ Reference: `external/house_diffusion/house_diffusion/rplanhg_datasets.py`
 - Reference: `external/ResPlan/resplan_utils.py`
 
 ## Commands
-- `task setup` — Install deps, init submodules, install pre-commit hooks
+- `task setup` — Install deps, init submodules
 - `task data:download` — Extract `ResPlan.pkl` into `data/raw/`
 - `task train` — Train model with default config
 - `task test` — Run tests

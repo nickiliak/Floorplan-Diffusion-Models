@@ -33,7 +33,6 @@ dependencies = [
 dev = [
     "pytest",
     "ruff",
-    "pre-commit",
     "ipykernel",
     "jupyter",
 ]

@@ -21,7 +21,7 @@ This project recreates [HouseDiffusion](https://github.com/aminshabani/house_dif
 git clone --recurse-submodules <repo-url>
 cd Floorplan-Diffusion-Models
 
-# Install everything (deps + submodules + pre-commit hooks)
+# Install everything (deps + submodules)
 task setup
 ```
 
