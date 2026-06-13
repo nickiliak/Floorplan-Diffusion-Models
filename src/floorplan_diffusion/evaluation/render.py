@@ -146,6 +146,42 @@ def derive_walls(
     return merged if not merged.is_empty else None
 
 
+def shapely_to_pathpatch(geom, **kwargs):
+    """Convert a Shapely (Multi)Polygon (with holes) to a matplotlib ``PathPatch``.
+
+    Interior rings become holes via the path's winding fill, so a wall lattice
+    keeps each room's interior empty. Shared by the matplotlib renderers in
+    ``scripts/sample.py`` and ``render_arch.py``.
+
+    Args:
+        geom: A Shapely ``Polygon`` or ``MultiPolygon``.
+        **kwargs: Forwarded to ``matplotlib.patches.PathPatch`` (e.g. facecolor).
+
+    Returns:
+        A ``PathPatch``, or ``None`` if no usable ring was found.
+    """
+    from matplotlib.patches import PathPatch
+    from matplotlib.path import Path as MplPath
+    from shapely.geometry import Polygon as _Polygon
+
+    polys = list(geom.geoms) if hasattr(geom, "geoms") else [geom]
+    vertices: list[np.ndarray] = []
+    codes: list[int] = []
+    for poly in polys:
+        if not isinstance(poly, _Polygon) or poly.is_empty:
+            continue
+        for ring in (poly.exterior, *poly.interiors):
+            ring_coords = np.asarray(ring.coords)
+            if len(ring_coords) < 3:
+                continue
+            vertices.append(ring_coords)
+            codes.append(MplPath.MOVETO)
+            codes.extend([MplPath.LINETO] * (len(ring_coords) - 1))
+    if not vertices:
+        return None
+    return PathPatch(MplPath(np.concatenate(vertices), codes), **kwargs)
+
+
 def _wall_rings(geom) -> list[np.ndarray]:
     """Flatten a Shapely (Multi)Polygon into exterior + interior ring arrays."""
     polys = list(geom.geoms) if hasattr(geom, "geoms") else [geom]

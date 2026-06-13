@@ -16,8 +16,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
-from matplotlib.patches import PathPatch
-from matplotlib.path import Path as MplPath
 
 from floorplan_diffusion.data.dataset import MAX_NUM_POINTS, ROOM_TYPE_TO_INT, ResPlanDataset
 from floorplan_diffusion.evaluation.render import (
@@ -25,7 +23,9 @@ from floorplan_diffusion.evaluation.render import (
     CATEGORY_ORDER,
     derive_walls,
     points_to_room_polygons,
+    shapely_to_pathpatch,
 )
+from floorplan_diffusion.evaluation.render_arch import render_floorplan_architectural
 from floorplan_diffusion.models.sampling import create_model_and_diffusion, generate_samples
 from floorplan_diffusion.training.lightning_module import FloorplanDiffusionModule
 
@@ -40,32 +40,6 @@ INT_TO_ROOM_NAME: dict[int, str] = {v: k for k, v in ROOM_TYPE_TO_INT.items()}
 
 
 DOOR_INTS: frozenset[int] = frozenset({ROOM_TYPE_TO_INT["door"], ROOM_TYPE_TO_INT["front_door"]})
-
-
-def _shapely_to_pathpatch(geom, **kwargs) -> PathPatch | None:
-    """Convert a Shapely (Multi)Polygon (with holes) to a matplotlib patch.
-
-    Interior rings become holes via the path's even-odd/winding fill, so a
-    wall lattice keeps each room's interior empty.
-    """
-    from shapely.geometry import Polygon as _Polygon
-
-    polys = list(geom.geoms) if hasattr(geom, "geoms") else [geom]
-    vertices: list[np.ndarray] = []
-    codes: list[int] = []
-    for poly in polys:
-        if not isinstance(poly, _Polygon) or poly.is_empty:
-            continue
-        for ring in (poly.exterior, *poly.interiors):
-            ring_coords = np.asarray(ring.coords)
-            if len(ring_coords) < 3:
-                continue
-            vertices.append(ring_coords)
-            codes.append(MplPath.MOVETO)
-            codes.extend([MplPath.LINETO] * (len(ring_coords) - 1))
-    if not vertices:
-        return None
-    return PathPatch(MplPath(np.concatenate(vertices), codes), **kwargs)
 
 
 def render_floorplan(
@@ -127,7 +101,7 @@ def render_floorplan(
     if draw_walls:
         walls = derive_walls(room_polygons, wall_thickness=wall_thickness)
         if walls is not None:
-            patch = _shapely_to_pathpatch(
+            patch = shapely_to_pathpatch(
                 walls,
                 facecolor=CATEGORY_COLORS["wall"],
                 edgecolor="black",
@@ -272,6 +246,16 @@ def main() -> None:
         default=0.025,
         help="Wall width in normalized [-1, 1] units (default: 0.025)",
     )
+    parser.add_argument(
+        "--style",
+        type=str,
+        choices=["eval", "architectural"],
+        default="eval",
+        help=(
+            "Rendering style: 'eval' (flat fills, yellow walls) or 'architectural' "
+            "(door swing arcs, window glyphs, black walls, room labels)"
+        ),
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -380,20 +364,34 @@ def main() -> None:
 
             # Render side-by-side: ground truth vs generated.
             fig, axes = plt.subplots(1, 2, figsize=(12, 6))
-            render_floorplan(
-                gt_polys,
-                title="Ground Truth",
-                ax=axes[0],
-                draw_walls=not args.no_walls,
-                wall_thickness=args.wall_thickness,
-            )
-            render_floorplan(
-                gen_polys,
-                title=f"Generated (adj={accuracy:.2f})",
-                ax=axes[1],
-                draw_walls=not args.no_walls,
-                wall_thickness=args.wall_thickness,
-            )
+            if args.style == "architectural":
+                render_floorplan_architectural(
+                    gt_polys,
+                    title="Ground Truth",
+                    ax=axes[0],
+                    wall_thickness=args.wall_thickness,
+                )
+                render_floorplan_architectural(
+                    gen_polys,
+                    title=f"Generated (adj={accuracy:.2f})",
+                    ax=axes[1],
+                    wall_thickness=args.wall_thickness,
+                )
+            else:
+                render_floorplan(
+                    gt_polys,
+                    title="Ground Truth",
+                    ax=axes[0],
+                    draw_walls=not args.no_walls,
+                    wall_thickness=args.wall_thickness,
+                )
+                render_floorplan(
+                    gen_polys,
+                    title=f"Generated (adj={accuracy:.2f})",
+                    ax=axes[1],
+                    draw_walls=not args.no_walls,
+                    wall_thickness=args.wall_thickness,
+                )
 
             # De-duplicate legend labels.
             handles, labels = axes[1].get_legend_handles_labels()
