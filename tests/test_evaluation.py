@@ -150,31 +150,37 @@ class TestCompatibility:
         p = _safe_polygon(coords)
         assert p.is_valid
 
-    def test_polygon_iou_zero_area(self) -> None:
-        from floorplan_diffusion.evaluation.compatibility import _polygon_iou
+    def test_estimate_graph_adjacent_rooms(self) -> None:
+        """A bedroom touching a living room produces an adjacency edge.
 
-        p1 = Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
-        # Degenerate polygon (line).
-        p2 = Polygon([(5, 5), (6, 5), (6, 5)])
-        iou = _polygon_iou(p1, p2)
-        assert iou >= 0.0
-
-    def test_estimate_graph_two_rooms_one_door(self) -> None:
-        """Two rooms connected by an interior door produce one room-room edge."""
+        Node ids are 1-indexed list positions (matching the dataset's
+        1-indexed room indices), so the two rooms are nodes 1 and 2.
+        """
         from floorplan_diffusion.evaluation.compatibility import estimate_graph
 
-        # Room 0: large square on the left.
+        # Living room: large square on the left.
         room0 = (np.array([(0, 0), (5, 0), (5, 10), (0, 10)]), 1)
-        # Room 1: large square on the right.
+        # Bedroom: large square on the right, sharing a boundary.
         room1 = (np.array([(5, 0), (10, 0), (10, 10), (5, 10)]), 2)
-        # Door: small rectangle overlapping both rooms at the boundary.
+
+        graph = estimate_graph([room0, room1])
+        assert graph.has_edge(1, 2)
+
+    def test_estimate_graph_bathroom_needs_door(self) -> None:
+        """A bathroom connects to a bedroom only via a door/window polygon."""
+        from floorplan_diffusion.evaluation.compatibility import estimate_graph
+
+        bedroom = (np.array([(0, 0), (5, 0), (5, 10), (0, 10)]), 2)
+        bathroom = (np.array([(5, 0), (10, 0), (10, 10), (5, 10)]), 4)
         door = (np.array([(4.5, 4), (5.5, 4), (5.5, 6), (4.5, 6)]), 11)
 
-        graph = estimate_graph([room0, room1, door])
-        assert graph.has_edge(0, 1)
+        # Touching alone is not enough (no adjacency rule for bathrooms).
+        assert not estimate_graph([bedroom, bathroom]).has_edge(1, 2)
+        # A door bridging both creates the edge.
+        assert estimate_graph([bedroom, bathroom, door]).has_edge(1, 2)
 
     def test_estimate_graph_front_door_connects_outside(self) -> None:
-        """A front door should connect a room to the outside node (-1)."""
+        """A front door should connect a living room to the outside node (-1)."""
         from floorplan_diffusion.evaluation.compatibility import estimate_graph
 
         room0 = (np.array([(0, 0), (10, 0), (10, 10), (0, 10)]), 1)
@@ -182,7 +188,18 @@ class TestCompatibility:
         front = (np.array([(-0.5, 4), (0.5, 4), (0.5, 6), (-0.5, 6)]), 13)
 
         graph = estimate_graph([room0, front])
-        assert graph.has_edge(-1, 0)
+        assert graph.has_edge(-1, 1)
+
+    def test_estimate_graph_sliver_stays_isolated(self) -> None:
+        """Rooms below min_room_area form no edges (mirrors GT cleanup)."""
+        from floorplan_diffusion.evaluation.compatibility import estimate_graph
+
+        living = (np.array([(0, 0), (5, 0), (5, 10), (0, 10)]), 1)
+        # Tiny kitchen sliver touching the living room.
+        sliver = (np.array([(5, 0), (5.01, 0), (5.01, 0.01), (5, 0.01)]), 3)
+
+        graph = estimate_graph([living, sliver])
+        assert not graph.has_edge(1, 2)
 
 
 class TestBuildGtGraph:
@@ -303,22 +320,23 @@ class TestEstimateGraphErrors:
         padding_mask = np.ones(n)
         door_mask = np.ones((n, n))
 
-        # Room 0: 3 points forming a big left square
+        # Room indices are 1-indexed, matching the dataset convention.
+        # Room 1: 3 points forming a big left square
         for i in range(3):
             room_types[i, 1] = 1  # living
-            room_indices[i, 0] = 1
+            room_indices[i, 1] = 1
             padding_mask[i] = 0
 
-        # Room 1: 3 points forming a big right square
+        # Room 2: 3 points forming a big right square
         for i in range(3, 6):
             room_types[i, 2] = 1  # bedroom
-            room_indices[i, 1] = 1
+            room_indices[i, 2] = 1
             padding_mask[i] = 0
 
         # Interior door: 3 points overlapping boundary
         for i in range(6, 9):
             room_types[i, 11] = 1  # interior door
-            room_indices[i, 2] = 1
+            room_indices[i, 3] = 1
             padding_mask[i] = 0
 
         # Connect rooms through door_mask (room 0 pt <-> room 1 pt)
@@ -349,16 +367,17 @@ class TestEstimateGraphErrors:
         padding_mask = np.ones(n)
         door_mask = np.ones((n, n))
 
-        # Room 0: 3 points
+        # Room indices are 1-indexed, matching the dataset convention.
+        # Room 1: 3 points
         for i in range(3):
             room_types[i, 1] = 1
-            room_indices[i, 0] = 1
+            room_indices[i, 1] = 1
             padding_mask[i] = 0
 
-        # Room 1: 3 points
+        # Room 2: 3 points
         for i in range(3, 6):
             room_types[i, 2] = 1
-            room_indices[i, 1] = 1
+            room_indices[i, 2] = 1
             padding_mask[i] = 0
 
         # GT says rooms are connected

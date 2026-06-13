@@ -1,10 +1,10 @@
-"""Compatibility metric: polygon IoU graph reconstruction and edge mismatch counting.
+"""Compatibility metric: geometric graph reconstruction and edge mismatch counting.
 
 Implements the HouseDiffusion paper's graph-based Compatibility metric by:
 1. Building Shapely polygons from generated room coordinates
-2. Using IoU overlap to detect which rooms each door connects
-3. Reconstructing the adjacency graph
-4. Comparing against ground truth and counting mismatches
+2. Reconstructing the room graph geometrically, mirroring the edge rules of
+   ``resplan_utils.plan_to_graph`` (adjacency / via_door / via_window / direct)
+3. Comparing against the ground-truth graph and counting edge mismatches
 """
 
 from __future__ import annotations
@@ -16,7 +16,13 @@ import numpy as np
 from shapely.geometry import Polygon
 from shapely.validation import make_valid
 
-# Door type constants (matching dataset.py encoding).
+# Room/part type constants (matching dataset.py encoding).
+_LIVING = 1
+_BEDROOM = 2
+_KITCHEN = 3
+_BATHROOM = 4
+_WINDOW = 5
+_BALCONY = 10
 _INTERIOR_DOOR = 11
 _FRONT_DOOR = 13
 _DOOR_TYPES = {_INTERIOR_DOOR, _FRONT_DOOR}
@@ -28,15 +34,6 @@ def _safe_polygon(coords: np.ndarray) -> Polygon:
     if not p.is_valid:
         p = make_valid(p)
     return p
-
-
-def _polygon_iou(p1: Polygon, p2: Polygon) -> float:
-    """Compute IoU between two Shapely polygons, guarding against zero area."""
-    intersection = p1.intersection(p2).area
-    union = p1.union(p2).area
-    if union <= 0:
-        return 0.0
-    return intersection / union
 
 
 def _build_gt_graph(
@@ -122,63 +119,92 @@ def _build_gt_graph(
                     continue
                 if door_mask[i, j] < 0.5:
                     graph.add_edge(-1, rj)
-            break  # one front door is enough to establish outside edges
 
     return graph
 
 
 def estimate_graph(
     room_polygons: list[tuple[np.ndarray, int]],
+    connector_buffer: float = 0.01,
+    adjacency_buffer: float = 0.05,
+    min_room_area: float = 0.02,
 ) -> nx.Graph:
-    """Estimate the adjacency graph from room polygons using polygon IoU.
+    """Estimate the room graph from polygons, mirroring ``plan_to_graph``.
 
-    For each door polygon, compute IoU with every non-door room polygon.
-    Interior doors (type 11) with top-2 IoU overlapping rooms form a room-room edge.
-    Front doors (type 13) connect the highest-IoU room to outside (-1).
+    Applies the same edge rules as ``resplan_utils.plan_to_graph`` (the source
+    of the ground-truth graphs) to the supplied geometry:
+
+    - *direct*: a front door touching a living room connects it to outside (-1).
+    - *adjacency*: kitchen/bedroom within *adjacency_buffer* of a living room.
+    - *via_door* / *via_window*: bathroom/balcony connected to living/bedroom
+      when a door or window polygon intersects both (buffered by
+      *connector_buffer*).
+
+    Rooms smaller than *min_room_area* stay isolated nodes: the stored ResPlan
+    graphs were built on cleaned geometry without sliver fragments, so edges
+    involving slivers never appear in the ground truth.
+
+    Node ids are the dataset's 1-indexed room indices: the dataset assigns
+    room indices contiguously from 1 and ``points_to_room_polygons`` returns
+    parts sorted by room index, so list position + 1 recovers the same ids
+    used by :func:`_build_gt_graph`.
 
     Args:
         room_polygons: List of ``(coords, room_type_int)`` tuples.
+        connector_buffer: Buffer (in normalized [-1, 1] units) applied to rooms
+            when testing door/window/front-door intersection.
+        adjacency_buffer: Max polygon distance (normalized units) for the
+            kitchen/bedroom-to-living adjacency rule.
+        min_room_area: Rooms with polygon area (normalized units squared) below
+            this take part in no edges.
 
     Returns:
         Estimated NetworkX graph.
     """
-    # Separate rooms and doors; build Shapely polygons.
-    room_entries: list[tuple[int, Polygon, int]] = []  # (index, polygon, type)
-    door_entries: list[tuple[int, Polygon, int]] = []
+    by_type: dict[int, list[tuple[int, Polygon]]] = defaultdict(list)
+    graph = nx.Graph()
+    graph.add_node(-1)  # outside
 
-    for idx, (coords, rtype) in enumerate(room_polygons):
+    for pos, (coords, rtype) in enumerate(room_polygons):
         if len(coords) < 3:
             continue
         poly = _safe_polygon(coords)
-        if rtype in _DOOR_TYPES:
-            door_entries.append((idx, poly, rtype))
-        else:
-            room_entries.append((idx, poly, rtype))
+        if poly.is_empty:
+            continue
+        node = pos + 1  # 1-indexed room idx (see docstring)
+        if rtype not in _DOOR_TYPES and rtype != _WINDOW:
+            graph.add_node(node)
+            if poly.area < min_room_area:
+                continue  # sliver: keep the node but form no edges
+        by_type[rtype].append((node, poly))
 
-    graph = nx.Graph()
-    for idx, _, _ in room_entries:
-        graph.add_node(idx)
-    graph.add_node(-1)  # outside
+    living = by_type[_LIVING]
+    connectors = [p for _, p in by_type[_INTERIOR_DOOR]] + [p for _, p in by_type[_WINDOW]]
 
-    # For each door, find overlapping rooms via IoU.
-    doors_rooms_map: dict[int, list[tuple[int, float]]] = defaultdict(list)
-    for d_idx, d_poly, d_type in door_entries:
-        for r_idx, r_poly, _ in room_entries:
-            iou = _polygon_iou(d_poly, r_poly)
-            if 0 < iou < 0.2:
-                doors_rooms_map[d_idx].append((r_idx, iou))
+    # direct: front door -> living room -> outside (-1).
+    for _, fd_poly in by_type[_FRONT_DOOR]:
+        for l_node, l_poly in living:
+            if fd_poly.intersects(l_poly.buffer(connector_buffer)):
+                graph.add_edge(-1, l_node)
 
-    for d_idx, d_poly, d_type in door_entries:
-        connections = doors_rooms_map[d_idx]
-        connections = sorted(connections, key=lambda t: t[1], reverse=True)
-        if d_type == _INTERIOR_DOOR:
-            # Interior door: top-2 rooms form an edge.
-            if len(connections) >= 2:
-                graph.add_edge(connections[0][0], connections[1][0])
-        elif d_type == _FRONT_DOOR:
-            # Front door: top-1 room connects to outside.
-            if len(connections) >= 1:
-                graph.add_edge(-1, connections[0][0])
+    # adjacency: kitchen/bedroom <-> living.
+    for rtype in (_KITCHEN, _BEDROOM):
+        for r_node, r_poly in by_type[rtype]:
+            for l_node, l_poly in living:
+                if r_poly.distance(l_poly) <= adjacency_buffer:
+                    graph.add_edge(r_node, l_node)
+
+    # via_door / via_window: bathroom/balcony <-> living/bedroom.
+    targets = living + by_type[_BEDROOM]
+    for rtype in (_BATHROOM, _BALCONY):
+        for r_node, r_poly in by_type[rtype]:
+            r_buffered = r_poly.buffer(connector_buffer)
+            for conn_poly in connectors:
+                if not conn_poly.intersects(r_buffered):
+                    continue
+                for t_node, t_poly in targets:
+                    if conn_poly.intersects(t_poly.buffer(connector_buffer)):
+                        graph.add_edge(r_node, t_node)
 
     return graph
 
@@ -192,8 +218,8 @@ def estimate_graph_errors(
 ) -> int:
     """Estimate adjacency graph from polygons and count edge mismatches.
 
-    Uses Shapely polygon IoU to detect door-room overlaps, reconstructs
-    the adjacency graph, and compares against ground truth.
+    Reconstructs the room graph geometrically (see :func:`estimate_graph`)
+    and compares it against the ground-truth graph encoded in *door_mask*.
 
     Args:
         room_polygons: Generated room polygons (output of points_to_room_polygons).

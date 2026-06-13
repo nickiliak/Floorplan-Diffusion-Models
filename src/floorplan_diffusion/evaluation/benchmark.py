@@ -40,8 +40,33 @@ class AggregatedResults:
     fid_std: float
     compatibility_mean: float
     compatibility_std: float
+    fid_floor: float
     num_runs: int
     per_run: list[BenchmarkResult] = field(default_factory=list)
+
+
+def _symlink_half_dirs(gt_dir: Path) -> tuple[Path, Path]:
+    """Split rendered GT PNGs into two disjoint half-directories via symlinks.
+
+    Used to measure the FID floor: FID between two identically-distributed
+    halves of the ground truth is pure finite-sample + rendering noise.
+
+    Args:
+        gt_dir: Directory of rendered ground-truth PNGs.
+
+    Returns:
+        ``(half_a, half_b)`` directory paths (even/odd indexed files).
+    """
+    half_a = gt_dir.parent / f"{gt_dir.name}_half_a"
+    half_b = gt_dir.parent / f"{gt_dir.name}_half_b"
+    files = sorted(gt_dir.glob("*.png"))
+    for dst_dir, half in ((half_a, files[0::2]), (half_b, files[1::2])):
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for f in half:
+            link = dst_dir / f.name
+            if not link.exists():
+                link.symlink_to(f.resolve())
+    return half_a, half_b
 
 
 def run_benchmark(
@@ -104,15 +129,37 @@ def run_benchmark(
             num_samples,
         )
 
+    fid_device = device if torch.cuda.is_available() else "cpu"
+
+    # --- Ground truth: identical across runs, so build + render it once ---
+    logger.info("Rendering %d ground-truth PNGs...", actual_samples)
+    all_gt_polys: list[list[tuple[np.ndarray, int]]] = []
+    for i in range(actual_samples):
+        arr, cond = dataset[i]
+        all_gt_polys.append(
+            points_to_room_polygons(
+                arr.T,
+                cond["room_types"],
+                cond["room_indices"],
+                cond["src_key_padding_mask"],
+            )
+        )
+    gt_dir = output_dir / "gt"
+    render_batch_to_dir(all_gt_polys, gt_dir)
+
+    # --- FID floor: GT half vs GT half measures finite-sample + render noise.
+    # The halves are n/2 images each, and FID is biased high at smaller n, so
+    # this floor is conservative relative to the n-vs-n model FID below.
+    half_a, half_b = _symlink_half_dirs(gt_dir)
+    fid_floor = compute_fid(half_a, half_b, batch_size=64, device=fid_device)
+    logger.info("FID floor (GT vs GT, %d images per half): %.2f", actual_samples // 2, fid_floor)
+
     per_run_results: list[BenchmarkResult] = []
 
     for run_idx in range(num_runs):
         logger.info("=== Run %d/%d ===", run_idx + 1, num_runs)
-        run_dir = output_dir / f"run_{run_idx}"
-        gt_dir = run_dir / "gt"
-        pred_dir = run_dir / "pred"
+        pred_dir = output_dir / f"run_{run_idx}" / "pred"
 
-        all_gt_polys: list[list[tuple[np.ndarray, int]]] = []
         all_pred_polys: list[list[tuple[np.ndarray, int]]] = []
         all_graph_errors: list[int] = []
 
@@ -140,7 +187,6 @@ def run_benchmark(
 
             for b in range(len(batch_indices)):
                 gen_points = generated_np[b].T  # [MAX_NUM_POINTS, 2]
-                gt_points = batch_items[b][0].T  # [MAX_NUM_POINTS, 2]
                 cond = batch_items[b][1]
 
                 room_types = cond["room_types"]
@@ -154,14 +200,6 @@ def run_benchmark(
                     room_indices,
                     padding_mask,
                 )
-                gt_polys = points_to_room_polygons(
-                    gt_points,
-                    room_types,
-                    room_indices,
-                    padding_mask,
-                )
-
-                all_gt_polys.append(gt_polys)
                 all_pred_polys.append(gen_polys)
 
                 # Graph compatibility errors.
@@ -177,12 +215,10 @@ def run_benchmark(
             sample_idx = batch_end
 
         # Render PNGs for FID.
-        logger.info("Rendering %d GT and predicted PNGs...", len(all_gt_polys))
-        render_batch_to_dir(all_gt_polys, gt_dir)
+        logger.info("Rendering %d predicted PNGs...", len(all_pred_polys))
         render_batch_to_dir(all_pred_polys, pred_dir)
 
-        # Compute FID.
-        fid_device = device if torch.cuda.is_available() else "cpu"
+        # Compute FID against the shared GT renders.
         fid_score = compute_fid(gt_dir, pred_dir, batch_size=64, device=fid_device)
         mean_errors = float(np.mean(all_graph_errors))
 
@@ -200,6 +236,7 @@ def run_benchmark(
         fid_std=float(fids.std()),
         compatibility_mean=float(compats.mean()),
         compatibility_std=float(compats.std()),
+        fid_floor=float(fid_floor),
         num_runs=num_runs,
         per_run=per_run_results,
     )

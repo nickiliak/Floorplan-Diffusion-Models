@@ -49,6 +49,7 @@ def main() -> None:
     print(f"Benchmark Results ({results.num_runs} runs, {results.per_run[0].num_samples} samples)")
     print(f"{'=' * 60}")
     print(f"FID:           {results.fid_mean:.2f} +/- {results.fid_std:.2f}")
+    print(f"FID floor:     {results.fid_floor:.2f} (GT vs GT, finite-sample + render noise)")
     print(f"Compatibility: {results.compatibility_mean:.2f} +/- {results.compatibility_std:.2f}")
     print(f"{'=' * 60}")
 
