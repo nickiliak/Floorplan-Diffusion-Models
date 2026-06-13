@@ -9,14 +9,9 @@ tasks:
       - uv run pre-commit install
 
   data:download:
-    desc: Extract ResPlan data into data/raw/
+    desc: Extract ResPlan.pkl into data/raw/
     cmds:
-      - cd external/ResPlan && unzip -o ResPlan.zip -d ../../data/raw/
-
-  data:convert:
-    desc: Convert ResPlan data to HouseDiffusion format
-    cmds:
-      - uv run python scripts/convert_resplan.py --input data/raw/ --output data/processed/
+      - uv run python -m src.floorplan_diffusion.util.extract_data
 
   train:
     desc: Train model with default config
