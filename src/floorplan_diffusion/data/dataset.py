@@ -77,6 +77,9 @@ NUM_COLUMNS: int = 2 + 25 + CORNER_IDX_DIMS + ROOM_IDX_DIMS + 1 + 2
 + 1 padding + 2 connections.
 """
 
+SPLIT_SEED: int = 42
+"""Seed for the deterministic train/eval split over raw pickle indices."""
+
 # ---------------------------------------------------------------------------
 # Helpers (mirrors from resplan_utils, kept local to avoid import issues)
 # ---------------------------------------------------------------------------
@@ -155,14 +158,20 @@ def _simplify_polygon(poly: Polygon, max_corners: int = MAX_CORNERS_PER_ROOM) ->
 class ResPlanDataset(Dataset):
     """PyTorch ``Dataset`` that reads a ResPlan pickle and outputs HouseDiffusion tensors.
 
+    The dataset is deterministically partitioned into train/eval splits via a
+    seeded permutation of raw pickle indices (:data:`SPLIT_SEED`), so training
+    and evaluation code that use the same *pickle_path* and *val_fraction* are
+    guaranteed disjoint data.
+
     Args:
         pickle_path: Path to the ResPlan ``.pkl`` file containing a list of plan dicts.
         cache_dir: Optional directory for ``.npz`` tensor caches.  When provided the
             dataset will load from cache if it exists, or write a new cache after
-            processing.  The cache file name is derived from the pickle path and
-            *set_name* so different splits do not collide.
-        set_name: One of ``"train"`` or ``"eval"``.  Controls random rotation
-            augmentation in :meth:`__getitem__`.
+            processing.  The cache file name is derived from the pickle path,
+            *set_name*, and *val_fraction* so different splits do not collide.
+        set_name: One of ``"train"`` or ``"eval"``.  Selects the split partition
+            and controls random rotation augmentation in :meth:`__getitem__`.
+        val_fraction: Fraction of raw plans assigned to the ``"eval"`` split.
     """
 
     # ------------------------------------------------------------------
@@ -174,13 +183,15 @@ class ResPlanDataset(Dataset):
         pickle_path: str | os.PathLike[str],
         cache_dir: str | os.PathLike[str] | None = None,
         set_name: str = "train",
+        val_fraction: float = 0.1,
     ) -> None:
         super().__init__()
         self.set_name = set_name
+        self.val_fraction = val_fraction
         self.num_coords = 2
         self.max_num_points = MAX_NUM_POINTS
 
-        cache_path = self._resolve_cache_path(pickle_path, cache_dir, set_name)
+        cache_path = self._resolve_cache_path(pickle_path, cache_dir, set_name, val_fraction)
 
         loaded = False
         if cache_path is not None and cache_path.exists():
@@ -251,18 +262,42 @@ class ResPlanDataset(Dataset):
     # Processing pipeline
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _eval_raw_indices(n_plans: int, val_fraction: float) -> set[int]:
+        """Return the raw pickle indices assigned to the ``"eval"`` split.
+
+        Uses a fixed-seed permutation over *raw* indices so a plan's split
+        assignment is stable across runs and across changes to the filtering
+        rules or tensor schema.
+
+        Args:
+            n_plans: Total number of plans in the pickle.
+            val_fraction: Fraction of plans assigned to eval.
+
+        Returns:
+            Set of raw indices belonging to the eval split.
+        """
+        rng = np.random.default_rng(SPLIT_SEED)
+        perm = rng.permutation(n_plans)
+        return {int(i) for i in perm[: int(n_plans * val_fraction)]}
+
     def _process_pickle(self, pickle_path: str | os.PathLike[str]) -> None:
-        """Load the pickle and convert every valid plan to tensors."""
+        """Load the pickle and convert every valid plan in this split to tensors."""
         with open(pickle_path, "rb") as fh:
             plans: list[dict[str, Any]] = pickle.load(fh)
+
+        eval_indices = self._eval_raw_indices(len(plans), self.val_fraction)
 
         houses: list[NDArray[np.float64]] = []
         door_masks: list[NDArray[np.float64]] = []
         self_masks: list[NDArray[np.float64]] = []
         gen_masks: list[NDArray[np.float64]] = []
+        raw_indices: list[int] = []
 
         skipped = 0
-        for plan in plans:
+        for raw_idx, plan in enumerate(plans):
+            if (raw_idx in eval_indices) != (self.set_name == "eval"):
+                continue
             result = self._process_plan(plan)
             if result is None:
                 skipped += 1
@@ -272,10 +307,12 @@ class ResPlanDataset(Dataset):
             door_masks.append(d_mask)
             self_masks.append(s_mask)
             gen_masks.append(g_mask)
+            raw_indices.append(raw_idx)
 
         logger.info(
-            "Processed %d plans, skipped %d (>%d vertices).",
+            "Processed %d '%s' plans, skipped %d (>%d vertices).",
             len(houses),
+            self.set_name,
             skipped,
             MAX_NUM_POINTS,
         )
@@ -284,6 +321,7 @@ class ResPlanDataset(Dataset):
         self.door_masks = door_masks
         self.self_masks = self_masks
         self.gen_masks = gen_masks
+        self.raw_indices = raw_indices
 
     def _process_plan(
         self, plan: dict[str, Any]
@@ -318,18 +356,18 @@ class ResPlanDataset(Dataset):
         # ~4% of plan scale gives a visually reasonable door width after normalization.
         door_buffer = half_extent * 0.04
 
-        # -- 2. Collect rooms: (corners, room_type_int, graph_node_id) ----------
-        rooms: list[tuple[NDArray[np.float64], int, str]] = []
+        # -- 2. Collect rooms: (corners, room_type_int, graph_node_id, orig_geom) --
+        rooms: list[tuple[NDArray[np.float64], int, str, Any]] = []
         for room_type in ROOM_TYPES:
             geom_data = plan.get(room_type)
             if geom_data is None:
                 continue
             polygons = _get_polygons(geom_data)
             for i, poly in enumerate(polygons):
-                poly = _simplify_polygon(poly)
+                simplified = _simplify_polygon(poly)
                 # Shapely exterior.coords includes the closing duplicate — drop it.
-                corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
-                rooms.append((corners, ROOM_TYPE_TO_INT[room_type], f"{room_type}_{i}"))
+                corners = np.array(simplified.exterior.coords[:-1], dtype=np.float64)
+                rooms.append((corners, ROOM_TYPE_TO_INT[room_type], f"{room_type}_{i}", poly))
 
         # -- 2b. Collect door polygons (LineStrings buffered to thin rectangles) --
         for door_key, door_type_int in DOOR_TYPES.items():
@@ -347,13 +385,13 @@ class ResPlanDataset(Dataset):
                     continue
                 poly = _simplify_polygon(poly)
                 corners = np.array(poly.exterior.coords[:-1], dtype=np.float64)
-                rooms.append((corners, door_type_int, f"{door_key}_{i}"))
+                rooms.append((corners, door_type_int, f"{door_key}_{i}", geom))
 
         # -- 3. Reject plans containing rooms with >MAX_CORNERS_PER_ROOM corners --
         # Polygons are simplified to MAX_CORNERS_PER_ROOM before this check, so
         # only plans where simplification could not reduce below the limit are
         # rejected here (extremely complex geometry that can't be faithfully encoded).
-        for corners, _rtype_int, node_id in rooms:
+        for corners, _rtype_int, node_id, _orig in rooms:
             if len(corners) > MAX_CORNERS_PER_ROOM:
                 logger.debug(
                     "Room %s has %d corners (>%d); rejecting plan.",
@@ -363,7 +401,7 @@ class ResPlanDataset(Dataset):
                 )
                 return None
 
-        total_vertices = sum(len(c) for c, _, _ in rooms)
+        total_vertices = sum(len(c) for c, _, _, _ in rooms)
         if total_vertices > MAX_NUM_POINTS or total_vertices == 0:
             return None
 
@@ -385,7 +423,7 @@ class ResPlanDataset(Dataset):
         node_id_to_room_idx: dict[str, int] = {}
         num_points = 0
 
-        for _room_idx, (corners, rtype_int, node_id) in enumerate(rooms):
+        for _room_idx, (corners, rtype_int, node_id, _orig) in enumerate(rooms):
             num_room_corners = len(corners)
 
             # Normalize coordinates.
@@ -449,11 +487,33 @@ class ResPlanDataset(Dataset):
         door_mask = np.ones((MAX_NUM_POINTS, MAX_NUM_POINTS), dtype=np.float64)
         graph: nx.Graph | None = plan.get("graph")
         if graph is not None:
+            # Stored graphs were built on cleaned geometry, so a node's index
+            # suffix can disagree with the raw plan's part order (e.g. sliver
+            # fragments shift the MultiPolygon enumeration). Match nodes to
+            # parts by geometry, falling back to the name convention.
+            node_to_part: dict[Any, int] = {}
+            for nid, data in graph.nodes(data=True):
+                node_geom = data.get("geometry")
+                part_idx = None
+                if node_geom is not None:
+                    part_idx = next(
+                        (
+                            idx
+                            for idx, (_, _, _, orig) in enumerate(rooms)
+                            if orig is not None and orig.equals(node_geom)
+                        ),
+                        None,
+                    )
+                if part_idx is None:
+                    part_idx = node_id_to_room_idx.get(nid)
+                if part_idx is not None:
+                    node_to_part[nid] = part_idx
+
             for u, v in graph.edges():
-                ri = node_id_to_room_idx.get(u)
-                rj = node_id_to_room_idx.get(v)
+                ri = node_to_part.get(u)
+                rj = node_to_part.get(v)
                 if ri is None or rj is None:
-                    # Edge involves a node we didn't extract (e.g. front_door).
+                    # Edge involves a node we didn't extract.
                     continue
                 si, ei = corner_bounds[ri]
                 sj, ej = corner_bounds[rj]
@@ -471,6 +531,7 @@ class ResPlanDataset(Dataset):
         pickle_path: str | os.PathLike[str],
         cache_dir: str | os.PathLike[str] | None,
         set_name: str,
+        val_fraction: float,
     ) -> Path | None:
         """Derive a deterministic cache file path, or ``None`` if caching is off."""
         if cache_dir is None:
@@ -482,8 +543,12 @@ class ResPlanDataset(Dataset):
         path_hash = hashlib.md5(str(pickle_path).encode()).hexdigest()[:12]
         # Encode the tensor schema (column count + point budget) into the name so
         # that changing the feature layout cannot silently reuse a stale cache.
-        schema_tag = f"c{NUM_COLUMNS}p{MAX_NUM_POINTS}"
-        return cache_dir / f"resplan_{set_name}_{path_hash}_{schema_tag}.npz"
+        # v2: door_mask graph nodes matched to parts by geometry, not name.
+        # v3: caches hold only their split's subset (plus raw_indices); the
+        #     val_fraction tag guards against reusing a differently-sized split.
+        schema_tag = f"c{NUM_COLUMNS}p{MAX_NUM_POINTS}v3"
+        split_tag = f"vf{int(round(val_fraction * 100))}"
+        return cache_dir / f"resplan_{set_name}_{path_hash}_{schema_tag}_{split_tag}.npz"
 
     def _save_cache(self, cache_path: Path) -> None:
         """Write processed arrays to a compressed ``.npz`` file."""
@@ -493,6 +558,7 @@ class ResPlanDataset(Dataset):
             door_masks=np.array(self.door_masks),
             self_masks=np.array(self.self_masks),
             gen_masks=np.array(self.gen_masks),
+            raw_indices=np.array(self.raw_indices, dtype=np.int64),
         )
 
     def _load_cache(self, cache_path: Path) -> bool:
@@ -503,6 +569,9 @@ class ResPlanDataset(Dataset):
         the caller can reprocess from the pickle).
         """
         data = np.load(cache_path, allow_pickle=True)
+        if "raw_indices" not in data:
+            logger.warning("Ignoring stale cache %s: missing raw_indices.", cache_path)
+            return False
         houses = list(data["houses"])
         # Defense in depth: the filename already encodes the schema, but verify
         # the actual array shape so a corrupt/mislabelled cache can never feed
@@ -521,4 +590,5 @@ class ResPlanDataset(Dataset):
         self.door_masks = list(data["door_masks"])
         self.self_masks = list(data["self_masks"])
         self.gen_masks = list(data["gen_masks"])
+        self.raw_indices = [int(i) for i in data["raw_indices"]]
         return True

@@ -9,26 +9,28 @@ diffusion model architectures for improved generation quality.
 - `src/floorplan_diffusion/` — Main Python package (all new code goes here)
 - `external/house_diffusion/` — Git submodule (original HouseDiffusion, READ-ONLY)
 - `external/ResPlan/` — Git submodule (ResPlan dataset tools, READ-ONLY)
-- `scripts/` — CLI entrypoints for data conversion, training, sampling, evaluation
+- `scripts/` — CLI entrypoints for training, sampling, evaluation
 - `configs/` — YAML experiment configurations
 - `notebooks/` — Exploration and analysis notebooks
 - `data/` — Raw, interim, and processed data (gitignored, not committed)
 - `models/` — Saved checkpoints (gitignored)
 
 ## Key Data Flow
-1. ResPlan pickle (Shapely polygons + NetworkX graphs) in `data/raw/`
-2. `scripts/convert_resplan.py` → JSON files in `data/processed/`
-3. `src/floorplan_diffusion/data/dataset.py` → PyTorch tensors
-4. Diffusion model training via `scripts/train.py`
+1. ResPlan pickle (Shapely polygons + NetworkX graphs) in `data/raw/ResPlan.pkl`,
+   extracted from `external/ResPlan/ResPlan.zip` via `task data:download`.
+2. `src/floorplan_diffusion/data/dataset.py` (`ResPlanDataset`) reads the pickle
+   directly, converts each plan to HouseDiffusion tensors, and caches the result
+   as a compressed `.npz` in `data/processed/`. There is NO separate convert step.
+3. Diffusion model training via `scripts/train.py` (the data module instantiates
+   `ResPlanDataset`, which auto-converts + caches on first run).
 
-## HouseDiffusion JSON Format (conversion target)
-Each JSON file contains:
-- `boxes`: Room bounding boxes as `[x0, y0, x1, y1]` (normalized)
-- `edges`: Edge line segments as `[x0, y0, x1, y1]`
-- `room_type`: Integer array (0-24 encoding)
-- `ed_rm`: Edge-to-room index mapping
-
-Room types are one-hot encoded to 25 dims. Coordinates normalized to [-1, 1].
+## Tensor / .npz Format (conversion target)
+`ResPlanDataset` emits a fixed-width array per plan (see `NUM_COLUMNS`, currently
+the `c158p192` schema: 192 points, 64 room-idx dims) plus masks, cached as
+`resplan_{set}_{pickle_hash}_{schema_tag}_{split_tag}.npz`. Coordinates normalized
+to [-1, 1]. Train/eval is a deterministic seeded split over raw pickle indices
+(`SPLIT_SEED`); each split caches only its own subset, so `set_name="eval"` is
+guaranteed held-out from training.
 Reference: `external/house_diffusion/house_diffusion/rplanhg_datasets.py`
 
 ## ResPlan Data Format (conversion source)
@@ -39,7 +41,7 @@ Reference: `external/house_diffusion/house_diffusion/rplanhg_datasets.py`
 
 ## Commands
 - `task setup` — Install deps, init submodules, install pre-commit hooks
-- `task data:convert` — Run ResPlan → HouseDiffusion conversion
+- `task data:download` — Extract `ResPlan.pkl` into `data/raw/`
 - `task train` — Train model with default config
 - `task test` — Run tests
 - `task lint` — Run ruff linting

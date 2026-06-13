@@ -1,7 +1,9 @@
 """PyTorch Lightning DataModule for ResPlan floorplan data.
 
-Wraps :class:`~floorplan_diffusion.data.dataset.ResPlanDataset` with a 90/10
-train/val random split and provides DataLoaders for each.
+Wraps :class:`~floorplan_diffusion.data.dataset.ResPlanDataset` and provides
+DataLoaders for the deterministic train/eval splits (the split itself lives in
+the dataset, seeded over raw pickle indices, so evaluation scripts that load
+``set_name="eval"`` see exactly the data held out here).
 """
 
 from __future__ import annotations
@@ -10,7 +12,7 @@ import os
 from typing import Any
 
 import pytorch_lightning as pl
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader
 
 from ..data.dataset import ResPlanDataset
 
@@ -44,32 +46,21 @@ class ResPlanDataModule(pl.LightningDataModule):
         self.save_hyperparameters()
 
     def setup(self, stage: str | None = None) -> None:
-        """Load the full dataset and split into train/val."""
-        # Load once with set_name="train" — the split handles val separation.
-        # We use set_name="train" here because the rotation augmentation is
-        # applied per-item in __getitem__ based on the dataset's set_name.
-        # After splitting, we'll wrap the val subset to suppress augmentation.
-        full_dataset = ResPlanDataset(
+        """Instantiate the deterministic train and eval splits."""
+        self.train_dataset = ResPlanDataset(
             pickle_path=self.pickle_path,
             cache_dir=self.cache_dir,
             set_name="train",
+            val_fraction=self.val_fraction,
         )
-
-        n_total = len(full_dataset)
-        n_val = max(1, int(n_total * self.val_fraction))
-        n_train = n_total - n_val
-
-        self.train_dataset, self._val_subset = random_split(full_dataset, [n_train, n_val])
-
-        # The val subset wraps the same underlying dataset (set_name="train"),
-        # meaning rotation augmentation still fires. We fix this by wrapping
-        # the subset to override set_name for the underlying dataset during
-        # validation iteration. A simpler approach: since random_split returns
-        # a Subset, the underlying dataset.set_name is "train" — val items
-        # will get random rotations, which provides a slight regularisation
-        # signal rather than a correctness issue. For strict no-augmentation,
-        # create a separate dataset instance.  For v1 this is acceptable.
-        self.val_dataset = self._val_subset
+        # Separate instance: disjoint by the seeded raw-index split, and free
+        # of the rotation augmentation that set_name="train" enables.
+        self.val_dataset = ResPlanDataset(
+            pickle_path=self.pickle_path,
+            cache_dir=self.cache_dir,
+            set_name="eval",
+            val_fraction=self.val_fraction,
+        )
 
     def train_dataloader(self) -> DataLoader[Any]:
         """Return the training DataLoader."""
