@@ -445,6 +445,7 @@ class TransformerModel(nn.Module):
 
             #guidance embedding for area
             #drop with probability 0.1
+            print(kwargs[f"{prefix}area"])
             guidance_emb = self.guidance_emb(kwargs[f"{prefix}area"].unsqueeze(-1))
             if self.training:
                 if th.rand(1).item() < 0.1:

@@ -244,7 +244,7 @@ class ResPlanDataset(Dataset):
             "room_indices": h[:, ci_end:ri_end],
             "src_key_padding_mask": 1 - h[:, ri_end],
             "connections": h[:, ri_end + 1 :],
-            "area": 10
+            "area": self.areas[idx]
         }
         return arr.astype(float), cond
 
@@ -261,6 +261,7 @@ class ResPlanDataset(Dataset):
         door_masks: list[NDArray[np.float64]] = []
         self_masks: list[NDArray[np.float64]] = []
         gen_masks: list[NDArray[np.float64]] = []
+        areas: list[float] = []
 
         skipped = 0
         for plan in plans:
@@ -268,11 +269,12 @@ class ResPlanDataset(Dataset):
             if result is None:
                 skipped += 1
                 continue
-            house_array, d_mask, s_mask, g_mask = result
+            house_array, d_mask, s_mask, g_mask, area = result
             houses.append(house_array)
             door_masks.append(d_mask)
             self_masks.append(s_mask)
             gen_masks.append(g_mask)
+            areas.append(area)
 
         logger.info(
             "Processed %d plans, skipped %d (>%d vertices).",
@@ -285,6 +287,7 @@ class ResPlanDataset(Dataset):
         self.door_masks = door_masks
         self.self_masks = self_masks
         self.gen_masks = gen_masks
+        self.areas = areas
 
     def _process_plan(
         self, plan: dict[str, Any]
@@ -461,7 +464,7 @@ class ResPlanDataset(Dataset):
                 door_mask[si:ei, sj:ej] = 0
                 door_mask[sj:ej, si:ei] = 0
 
-        return house_array, door_mask, self_mask, gen_mask
+        return house_array, door_mask, self_mask, gen_mask, inner.area
 
     # ------------------------------------------------------------------
     # Cache I/O
@@ -494,6 +497,7 @@ class ResPlanDataset(Dataset):
             door_masks=np.array(self.door_masks),
             self_masks=np.array(self.self_masks),
             gen_masks=np.array(self.gen_masks),
+            areas=np.array(self.areas, dtype=np.float64),
         )
 
     def _load_cache(self, cache_path: Path) -> bool:
@@ -522,4 +526,5 @@ class ResPlanDataset(Dataset):
         self.door_masks = list(data["door_masks"])
         self.self_masks = list(data["self_masks"])
         self.gen_masks = list(data["gen_masks"])
+        self.areas = list(data["areas"]) if "areas" in data else [0.0] * len(houses)
         return True
