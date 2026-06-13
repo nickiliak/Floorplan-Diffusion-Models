@@ -9,7 +9,7 @@ diffusion:
   noise_schedule: cosine
 
 training:
-  batch_size: 128
+  batch_size: 64
   lr: 3.0e-4
   weight_decay: 0.05
   warmup_steps: 2000
