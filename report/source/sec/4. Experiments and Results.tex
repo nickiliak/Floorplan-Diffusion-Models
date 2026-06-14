@@ -1,0 +1,57 @@
+\section{Experiments and Results}
+\label{Results}
+
+\subsection{Evaluation protocol}
+We evaluate on a held-out split of ResPlan. The train/eval partition is a
+deterministic seeded split over the raw plan indices, so the evaluation set is
+fixed across runs and never seen during training. We hold out $10\%$ of the plans
+for evaluation. Augmentation (rotations and flips) is applied only to the training
+split.
+
+We report two metrics. The first is the Fr\'echet Inception Distance
+(FID)~\cite{FID}, computed on $256\times256$ rasterised renders of the plans using
+InceptionV3 features. Because FID is biased on finite samples and our renders carry
+some rasterisation noise, we also report an \emph{FID floor}: the FID between two
+disjoint, identically distributed halves of the ground-truth set. This captures the
+finite-sample and rendering noise alone and sets a conservative reference against
+which the model's FID should be read. The second metric is a graph-based \emph{Compatibility} score,
+following HouseDiffusion~\cite{HouseDiffusion}. We re-estimate the room-adjacency
+graph from each generated plan using the same edge rules as the ResPlan graph
+construction (direct, adjacency, and via-door/window connections) and count the
+edge mismatches against the conditioning graph; lower is better. Each benchmark
+runs several independent sampling passes, and we report the mean and standard
+deviation.
+
+% TODO(HPC): fill in once the cluster is back and samples are generated.
+\begin{table}[t]
+  \centering
+  \small
+  \setlength{\tabcolsep}{6pt}
+  \renewcommand{\arraystretch}{1.15}
+  \begin{tabular}{@{}l c c@{}}
+    \toprule
+    & HouseDiffusion-ResPlan & FID floor \\
+    \midrule
+    FID ($\downarrow$)           & \todo{TBD} & \todo{TBD} \\
+    Compatibility ($\downarrow$) & \todo{TBD} & --- \\
+    \bottomrule
+  \end{tabular}
+  \caption{Quantitative results on the held-out ResPlan split (mean over several
+  sampling runs). Results pending; the cluster was unavailable at submission time.}
+  \label{tab:results}
+\end{table}
+
+\subsection{Qualitative results}
+We render generated plans with an architectural renderer that draws walls, door
+swings, and window glyphs, so the structure of the generated layouts can be
+inspected directly against ground-truth plans.
+
+% TODO(HPC): replace with generated vs. ground-truth samples once available.
+\begin{figure}[t]
+  \centering
+  \fbox{\parbox[c][3cm][c]{0.9\linewidth}{\centering Placeholder: generated plans
+  (right) next to ground-truth plans (left).}}
+  \caption{Qualitative comparison of generated and ground-truth floorplans. (To be
+  added.)}
+  \label{fig:qualitative}
+\end{figure}

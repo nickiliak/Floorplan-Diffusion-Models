@@ -1,0 +1,30 @@
+\section{Introduction}
+\label{sec:intro}
+
+%-------------------------------------------------------------------------
+\subsection{Problem}
+In collaboration with the company Milestone Systems we were tasked to find a way of  generating large quantity of 2-dimensional floor-plans, in order to be used as tests sets for their models. At the time of this project's conception, one of the best performing generative models for this task was HouseDiffusion \cite{HouseDiffusion} on the RPLAN dataset. The goal of this project was then to understand and implement HouseDiffusion on the publicly available dataset ResPlan \cite{ResPlan}, as well as some improvements needed or possible with the new data.
+
+\subsection{Prior work}
+House-GAN \cite{HouseGAN} introduced graph-constrained floorplan generation, where a bubble diagram encoding room types and their connections is used as input to generate room layouts via a relational GAN. Its successor House-GAN++ \cite{HouseGANpp} refined this further and remained state of the art until HouseDiffusion. Instead of working with room masks, HouseDiffusion directly generates vector floorplans by representing each room and door as a polygonal loop and iteratively denoising their 2D corner coordinates through a Transformer-based diffusion model. 
+\\ \\
+Each room corner is embedded into a 512-dimensional vector using a linear layer. This embedding is built from several components: the 2D corner coordinates (and interpolated wall points), a one-hot room type vector (e.g. kitchen, bedroom), one-hot indices identifying the specific room and point, and the current diffusion timestep t.
+\\ \\
+The model uses two types of denoising steps: a continuous one to accurately reverse the diffusion process, and a discrete one using a binary coordinate representation to capture geometric relationships and angles like parallel lines and corner-sharing between rooms. The transformer model has three different types of attention mechanisms which help inform the model of the input graph constraint throughout generation. Component-wise Self Attention (CSA) restricts attention to corners within the same room or door, helping the model learn room shapes. Global Self Attention (GSA) allows every corner to attend to every other corner across all rooms, so the global shape can be correct. Relational Cross Attention (RCA) only allows attention between rooms and their directly connected doors, which helps place doors correctly.
+
+
+
+\subsection{Our approach}
+We keep the HouseDiffusion architecture and adapt it to ResPlan, whose plans are
+larger and more detailed than RPLAN's. Our contributions are threefold. First, we
+build a clean and reproducible training pipeline on top of PyTorch Lightning.
+Second, we adapt the fixed-width input representation to ResPlan: we widen the
+per-plan point budget and add a polygon simplification step so the dataset is
+retained almost in full rather than mostly discarded. Third, we set up an
+evaluation protocol based on FID and a graph-based Compatibility metric so the
+generated plans can be assessed both visually and structurally. The model and its
+training are described in Section~\ref{method}, and our evaluation in
+Section~\ref{Results}.
+%-------------------------------------------------------------------------
+
+

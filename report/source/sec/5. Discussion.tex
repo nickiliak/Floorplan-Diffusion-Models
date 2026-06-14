@@ -1,0 +1,42 @@
+\section{Discussion}
+
+\subsection{Limitations}
+Our implementation has several limitations. Even at the widened $192$-point budget,
+about $7\%$ of ResPlan plans exceed the limit and are dropped, so the most complex
+layouts are out of reach. Training in fp16 was prone to overflow, which forced an
+fp32 fallback (the configuration we report on) at the cost of throughput. The model
+receives its constraints only as one-hot features, with no graph encoder and no
+guided sampling, so it can only learn adjacency implicitly. Finally, results are
+bounded by ResPlan's scale and its room-type vocabulary.
+
+\subsection{Future work}
+We ran preliminary experiments on two extensions but did not retain either in the
+final pipeline, deprioritising them to keep the reported model focused. The first
+conditions generation on room area through a classifier-free guidance
+signal~\cite{classifierfree}: the area embedding is randomly dropped during
+training and scaled at sampling time to steer plans toward a target size. The
+second is a heterogeneous graph transformer that generates the input room graph
+itself, predicting rooms and their adjacency, door, and window relations, which
+would remove the need for a hand-specified bubble diagram. Both remain promising
+directions for future work.
+
+During this project, a new paper for generating floorplans known as "Unified Vector Floorplan Generation via Markup Representation" \cite{FML} was published from The University of Tokyo, that seems to outperform HouseDiffusion by a considerable degree. The paper introduces Floorplan Markup Language (FML) which enables them to predict floorplans autoregressively using a transformer-based generative model. In particular, this lets them constrain the outputs to realistic and desirable floorplans, by setting the probability of improper tokens to 0 when it e.g. makes rooms overlap or doesn't follow the input condition. In future work, it would be exciting to see what results we could achieve using an FML based model, and how it would fare given the ResPlan's unique complexities.
+
+\subsection{Conclusion}
+We adapted HouseDiffusion from RPLAN to the larger and more detailed ResPlan
+dataset. The transformer backbone, its three-branch attention, and the diffusion
+process are kept from the original; the one change to the network follows from the
+data representation. To fit ResPlan's more complex plans we widened the fixed-width
+format, raising the point budget from $100$ to $192$ and doubling the corner and
+room index widths from $32$ to $64$. This grows the conditioning vector from $89$
+to $153$ channels and with it the first conditioning layer, so the model is trained
+from scratch rather than from the released RPLAN weights. A polygon simplification
+step keeps roughly $93\%$ of the dataset instead of about half, and we set up an
+evaluation protocol based on FID and a graph-based Compatibility metric. The result
+is a working pipeline for vector floorplan generation on ResPlan and a clear set of
+directions for improving it.
+
+\subsection{Use of AI}
+We made use of AI assistants during this project to help navigate and understand the HouseDiffusion codebase, which was initially very unfamiliar to us, as well as for general debugging. We also used it as a way to brainstorm and motivate new ideas/directions, though all final decisions and implementations were chosen and verified by us.
+
+\label{discuss}

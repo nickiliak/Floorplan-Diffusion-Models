@@ -1,0 +1,57 @@
+
+\documentclass[10pt,twocolumn,letterpaper]{article}
+
+%%%%%%%%% PAPER TYPE  - PLEASE UPDATE FOR FINAL VERSION
+\usepackage{cvpr}              % To produce the CAMERA-READY version
+% \usepackage[review]{cvpr}      % To produce the REVIEW version
+% \usepackage[pagenumbers]{cvpr} % To force page numbers, e.g. for an arXiv version
+
+% Import additional packages in the preamble file, before hyperref
+\input{preamble}
+
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+
+
+
+%%%%%%%%% TITLE - PLEASE UPDATE
+\title{Using Diffusion Models \\ to generate floorplans}
+
+%%%%%%%%% AUTHORS - PLEASE UPDATE
+
+% --- If multiple Authors:
+\author{Nikolaos Iliakis\\
+\\
+{\tt\small s250201@dtu.dk}
+\and
+Konstantinos Papadopoulos\\
+\\
+{\tt\small s250219@dtu.dk}
+\and
+Edvin Smajlovic\\
+\\
+{\tt\small s224204@dtu.dk}
+}
+% --- Beginning of the Document:
+
+\begin{document}
+\maketitle
+\input{sec/1. Introduction}
+\input{sec/2. Data}
+\input{sec/3. House Diffusion}
+\input{sec/4. Experiments and Results}
+\input{sec/5. Discussion}
+% --- Example of section structure:
+%\input{sec/1_sectionexample}
+
+
+% --- Biblography
+{
+    \small
+    \bibliographystyle{ieeenat_fullname}
+    \bibliography{main}
+    
+}
+
+
+\end{document}
