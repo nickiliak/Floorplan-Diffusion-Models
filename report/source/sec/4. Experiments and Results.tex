@@ -18,11 +18,10 @@ which the model's FID should be read. The second metric is a graph-based \emph{C
 following HouseDiffusion~\cite{HouseDiffusion}. We re-estimate the room-adjacency
 graph from each generated plan using the same edge rules as the ResPlan graph
 construction (direct, adjacency, and via-door/window connections) and count the
-edge mismatches against the conditioning graph; lower is better. Each benchmark
-runs several independent sampling passes, and we report the mean and standard
+edge mismatches against the conditioning graph; lower is better. We run five
+independent sampling passes of $1000$ plans each and report the mean and standard
 deviation.
 
-% TODO(HPC): fill in once the cluster is back and samples are generated.
 \begin{table}[t]
   \centering
   \small
@@ -32,26 +31,35 @@ deviation.
     \toprule
     & HouseDiffusion-ResPlan & FID floor \\
     \midrule
-    FID ($\downarrow$)           & \todo{TBD} & \todo{TBD} \\
-    Compatibility ($\downarrow$) & \todo{TBD} & --- \\
+    FID ($\downarrow$)           & $44.79 \pm 0.94$ & $16.36$ \\
+    Compatibility ($\downarrow$) & $2.84 \pm 0.04$  & --- \\
     \bottomrule
   \end{tabular}
-  \caption{Quantitative results on the held-out ResPlan split (mean over several
-  sampling runs). Results pending; the cluster was unavailable at submission time.}
+  \caption{Quantitative results on the held-out ResPlan split, as mean $\pm$ std
+  over five sampling runs of $1000$ plans. The FID floor is the FID between two
+  disjoint halves of the ground-truth set ($500$ renders each) and lower-bounds
+  the score attainable under our finite-sample, rasterised evaluation;
+  Compatibility counts graph-edge mismatches per plan.}
   \label{tab:results}
 \end{table}
 
 \subsection{Qualitative results}
 We render generated plans with an architectural renderer that draws walls, door
 swings, and window glyphs, so the structure of the generated layouts can be
-inspected directly against ground-truth plans.
+inspected directly against ground-truth plans. Figure~\ref{fig:qualitative} shows
+two held-out conditioning graphs with their ground truth (left) and a sample from
+the final model (right). The generated plans recover the correct rooms and most of
+the intended adjacencies, with walls, doors, and windows in plausible positions;
+the main failure mode is geometric, as room outlines are looser and occasionally
+overlap rather than tiling the floor cleanly.
 
-% TODO(HPC): replace with generated vs. ground-truth samples once available.
 \begin{figure}[t]
   \centering
-  \fbox{\parbox[c][3cm][c]{0.9\linewidth}{\centering Placeholder: generated plans
-  (right) next to ground-truth plans (left).}}
-  \caption{Qualitative comparison of generated and ground-truth floorplans. (To be
-  added.)}
+  \includegraphics[width=\linewidth]{figures/qual_sample_a.png}\\[2pt]
+  \includegraphics[width=\linewidth]{figures/qual_sample_b.png}
+  \caption{Qualitative comparison on two held-out plans: ground truth (left) and a
+  sample from the final model (right), drawn with the architectural renderer. The
+  generated layouts match the conditioning rooms and adjacencies; geometry is the
+  weaker point.}
   \label{fig:qualitative}
 \end{figure}

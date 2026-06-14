@@ -112,12 +112,13 @@ an exponentially increasing tolerance until the outline meets the corner budget,
 and leaves rooms that are already within the limit untouched. This keeps more
 plans inside the representation and gives the model cleaner targets to learn from.
 
-\begin{figure}[t]
+\begin{figure*}[t]
   \centering
-  % TODO: replace with generated samples at increasing training steps.
-  \fbox{\parbox[c][3cm][c]{0.9\linewidth}{\centering Placeholder: generated
-  samples at increasing training steps.}}
-  \caption{Qualitative progression of generated floorplans over training. (To be
-  added.)}
+  \includegraphics[width=\linewidth]{figures/progression.png}
+  \caption{Generation quality over training for one held-out plan: the ground
+  truth (left) and samples from the model at $100$k, $200$k, and $250$k steps. The
+  conditioning rooms and their adjacencies are already recovered by $100$k steps;
+  later checkpoints mainly refine the geometry, with room outlines tiling more
+  cleanly and fewer overlaps.}
   \label{fig:training_progress}
-\end{figure}
+\end{figure*}
