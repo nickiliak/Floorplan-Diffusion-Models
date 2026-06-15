@@ -445,12 +445,17 @@ class TransformerModel(nn.Module):
 
             #guidance embedding for area
             #drop with probability 0.1
-            print(kwargs[f"{prefix}area"])
-            guidance_emb = self.guidance_emb(kwargs[f"{prefix}area"].unsqueeze(-1))
             if self.training:
+                guidance_emb = self.guidance_emb(th.log(kwargs[f"{prefix}area"].unsqueeze(-1)))
                 if th.rand(1).item() < 0.1:
                     guidance_emb = th.zeros_like(guidance_emb)
                     print("Dropping guidance embedding for area")
+            else:
+                try:
+                    print(kwargs[f"{prefix}area"])
+                except:
+                    pass
+                guidance_emb = self.guidance_emb(th.log(th.tensor([50000]*len(timesteps),device="cuda").unsqueeze(-1)))
     
 
         # PositionalEncoding and DM model
@@ -466,7 +471,26 @@ class TransformerModel(nn.Module):
         out_dec = self.output_linear1(out)
         out_dec = self.activation(out_dec)
         out_dec = self.output_linear2(out_dec)
-        out_dec = self.output_linear3(out_dec)
+        if self.training:
+            out_dec = self.output_linear3(out_dec)
+        else:
+            out_dec1 = self.output_linear3(out_dec)
+
+            out = input_emb + cond_emb + time_emb.repeat((1, input_emb.shape[1], 1))
+            for layer in self.transformer_layers:
+                out = layer(
+                    out,
+                    kwargs[f"{prefix}door_mask"],
+                    kwargs[f"{prefix}self_mask"],
+                    kwargs[f"{prefix}gen_mask"],
+                )
+
+            out_dec = self.output_linear1(out)
+            out_dec = self.activation(out_dec)
+            out_dec = self.output_linear2(out_dec)
+            out_dec2 = self.output_linear3(out_dec)
+            www = 3
+            out_dec = (1+www)*out_dec1 - www*out_dec2
 
         if not self.analog_bit:
             out_bin_start = x * xtalpha.repeat([1, 1, 9]) - out_dec.repeat(

@@ -39,5 +39,5 @@ uv run --no-sync python -c "import torch; assert torch.cuda.is_available()" || {
 
 ## --- Execution ---
 echo ">>> Generating samples"
-uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=250000-val/loss=0.0017.ckpt
-uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=225000-val/loss=0.0015.ckpt
+uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=250000-val/loss=0.0012.ckpt
+uv run python -m scripts.sample --checkpoint models/checkpoints/floorplan-step=175000-val/loss=0.0013.ckpt
